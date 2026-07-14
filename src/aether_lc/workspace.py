@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from os import startfile
 from pathlib import Path
 import subprocess
+import sys
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -70,7 +70,25 @@ def build_solution_content(python_code: str, metadata: ProblemMetadata) -> str:
 def write_solution_file(python_code: str, metadata: ProblemMetadata) -> None:
     with open(SOLUTION_FILE, "w", encoding="utf-8") as file:
         file.write(build_solution_content(python_code, metadata))
-    startfile(SOLUTION_FILE)
+    open_path(SOLUTION_FILE)
+
+
+def open_path(path: Path) -> None:
+    if sys.platform == "win32":
+        import os
+
+        os.startfile(path)
+        return
+
+    command = "open" if sys.platform == "darwin" else "xdg-open"
+    try:
+        subprocess.Popen(
+            [command, str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
 
 
 def run_solution_file() -> subprocess.CompletedProcess[str]:

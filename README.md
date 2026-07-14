@@ -2,7 +2,7 @@
 
 一个面向 LeetCode 中文站的轻量本地刷题 CLI。它复用浏览器登录态，在线获取题目，生成根目录单文件 `solution.py`，并支持本地测试和远程提交。
 
-当前版本：`v0.5.6`
+当前版本：`v0.5.7`
 
 ## 核心能力
 
@@ -10,6 +10,7 @@
 - 在线获取题目详情和题目索引。
 - 使用根目录 `solution.py` 作为唯一主要工作区。
 - `lc solve <题号>` 生成可编辑的 Python 解题模板。
+- 生成模板后会按当前系统尝试打开 `solution.py`。
 - `lc test` 运行 `solution.py` 中的 `run_cases()`。
 - `lc submit` 提交 marker 区域代码到 LeetCode 中文站，并轮询判题结果。
 - 生成模板时写入 `problem_id` 和 `submit_question_id`，避免展示题号和 LeetCode 内部提交 ID 混用。
@@ -18,23 +19,23 @@
 
 ## 环境要求
 
-- Windows
+- Windows / Linux / macOS
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 - 已在浏览器中登录 LeetCode 中文站
 
 ## 安装
 
-```powershell
+```shell
 git clone https://github.com/Aetherialter/leetcode-cn-local-cli.git
-Set-Location leetcode-cn-local-cli
+cd leetcode-cn-local-cli
 uv sync
 uv run lc --help
 ```
 
 ## 基本工作流
 
-```powershell
+```shell
 uv run lc login
 uv run lc status
 uv run lc get 1
@@ -89,8 +90,8 @@ class Solution:
 ## 当前限制
 
 - 当前仅支持 LeetCode 中文站。
-- 当前仅支持 Windows 环境。
 - 当前仅自动读取 Chrome Cookie。
+- `lc solve` 生成模板后会尝试打开 `solution.py`；Windows 使用系统默认打开方式，macOS 使用 `open`，Linux 使用 `xdg-open`。
 - 当前远程提交仅支持 Python3。
 - 当前只维护根目录单个 `solution.py`，不会生成每题独立目录。
 - 当前不保存完整题面到本地，也不引入本地数据库。
@@ -117,7 +118,7 @@ Aether_lc 会把浏览器 Cookie 的本地副本保存到 `.aether_lc/session.js
 
 如果浏览器 Cookie 刷新，或旧 Cookie 被服务端判定失效，CLI 可能在 `lc status`、`lc profile` 或 `lc submit` 时提示重新执行：
 
-```powershell
+```shell
 uv run lc login
 ```
 
@@ -125,7 +126,7 @@ uv run lc login
 
 ## 开发与验证
 
-```powershell
+```shell
 uv run ruff format src tests
 uv run ruff check src pyproject.toml tests
 uv run pytest
@@ -133,7 +134,7 @@ uv run pytest
 
 发布前常用手动检查：
 
-```powershell
+```shell
 uv run lc --help
 uv run lc get 2196
 uv run lc solve 1
@@ -164,6 +165,7 @@ tests/
 - `v0.5.4`: 修复 GraphQL `data: null` 导致 traceback，并精简 README。
 - `v0.5.5`: 引入客户端错误结果类型，收敛 service 层错误处理并补充边界测试。
 - `v0.5.6`: 收束 `lc show` 参数校验，避免非法分页参数触发远端接口异常提示。
+- `v0.5.7`: 修复非 Windows 环境导入 `os.startfile` 导致 CLI 无法启动的问题。
 - `v0.6`: 稳定性与诊断完整修复版。
 - `v0.7`: 轻量缓存。
 - `v0.8`: 样例提取原型。
