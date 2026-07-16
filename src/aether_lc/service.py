@@ -19,7 +19,7 @@ from aether_lc.workspace import WorkspaceError, parse_solution_submission
 MAX_ATTEMPTS = 10
 
 
-def _client_error_message(kind: ClientErrorKind) -> str:
+def _client_error_message(kind: ClientErrorKind | None) -> str:
     match kind:
         case ClientErrorKind.NETWORK:
             return "网络请求失败, 请检查网络连接"
