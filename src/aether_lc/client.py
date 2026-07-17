@@ -121,33 +121,66 @@ class LeetCodeClient:
         if cookies:
             self.client.cookies.update(cookies)
 
-    def user_status(self) -> ClientResult:
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        timeout: float,
+        **kwargs: Any,
+    ) -> ClientResult:
         try:
-            response = self.client.post("/graphql/", json=USER_STATUS_QUERY, timeout=10)
+            response = self.client.request(
+                method,
+                path,
+                timeout=timeout,
+                **kwargs,
+            )
             response.raise_for_status()
-            result = response.json()
         except httpx.RequestError:
             return ClientResult(error=ClientErrorKind.NETWORK)
         except httpx.HTTPStatusError:
             return ClientResult(error=ClientErrorKind.HTTP)
+
+        try:
+            result = response.json()
         except ValueError:
             return ClientResult(error=ClientErrorKind.INVALID_JSON)
-        data = result.get("data", {})
+        if not isinstance(result, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        return ClientResult(data=result)
+
+    def user_status(self) -> ClientResult:
+        result = self._request_json(
+            "POST",
+            "/graphql/",
+            json=USER_STATUS_QUERY,
+            timeout=10,
+        )
+        if not result.ok:
+            return result
+        payload = result.data
+        assert isinstance(payload, dict)
+        data = payload.get("data")
         if not isinstance(data, dict):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
-        return ClientResult(data=data.get("userStatus"))
+        status = data.get("userStatus")
+        if not isinstance(status, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        is_signed_in = status.get("isSignedIn")
+        username = status.get("username")
+        if not isinstance(is_signed_in, bool) or (
+            is_signed_in and (not isinstance(username, str) or not username)
+        ):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        return ClientResult(data=status)
 
     def problem_stats(self) -> ClientResult:
-        try:
-            response = self.client.get("/api/problems/all/", timeout=20)
-            response.raise_for_status()
-            result = response.json()
-        except httpx.RequestError:
-            return ClientResult(error=ClientErrorKind.NETWORK)
-        except httpx.HTTPStatusError:
-            return ClientResult(error=ClientErrorKind.HTTP)
-        except ValueError:
-            return ClientResult(error=ClientErrorKind.INVALID_JSON)
+        result = self._request_json("GET", "/api/problems/all/", timeout=20)
+        if not result.ok:
+            return result
+        payload = result.data
+        assert isinstance(payload, dict)
 
         stats = {
             "solved": {
@@ -163,15 +196,24 @@ class LeetCodeClient:
                 "Hard": 0,
             },
         }
-        items = result.get("stat_status_pairs")
+        items = payload.get("stat_status_pairs")
         if not isinstance(items, list):
             return ClientResult(
                 error=ClientErrorKind.INVALID_RESPONSE,
                 message="stat_status_pairs is not a list",
             )
         for item in items:
-            difficulty_level = item.get("difficulty", {}).get("level")
-            difficulty = DIFFICULTY_MAP.get(difficulty_level)
+            if not isinstance(item, dict):
+                return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+            difficulty_data = item.get("difficulty")
+            if not isinstance(difficulty_data, dict):
+                return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+            difficulty_level = difficulty_data.get("level")
+            difficulty = (
+                DIFFICULTY_MAP.get(difficulty_level)
+                if isinstance(difficulty_level, int)
+                else None
+            )
 
             if not difficulty:
                 continue
@@ -225,20 +267,31 @@ class LeetCodeClient:
                 "filters": {},
             },
         }
-        try:
-            response = self.client.post("/graphql/", json=payload, timeout=10)
-            response.raise_for_status()
-            result = response.json()
-        except httpx.RequestError:
-            return ClientResult(error=ClientErrorKind.NETWORK)
-        except httpx.HTTPStatusError:
-            return ClientResult(error=ClientErrorKind.HTTP)
-        except ValueError:
-            return ClientResult(error=ClientErrorKind.INVALID_JSON)
-        data = result.get("data", {})
+        result = self._request_json(
+            "POST",
+            "/graphql/",
+            json=payload,
+            timeout=10,
+        )
+        if not result.ok:
+            return result
+        response_payload = result.data
+        assert isinstance(response_payload, dict)
+        data = response_payload.get("data")
         if not isinstance(data, dict):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
-        return ClientResult(data=data.get("problemsetQuestionList"))
+        problem_list = data.get("problemsetQuestionList")
+        if not isinstance(problem_list, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        questions = problem_list.get("questions")
+        total = problem_list.get("total")
+        if (
+            not isinstance(questions, list)
+            or not all(isinstance(item, dict) for item in questions)
+            or not isinstance(total, int)
+        ):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        return ClientResult(data=problem_list)
 
     def problem_detail(self, title_slug: str) -> ClientResult:
         payload = {
@@ -248,20 +301,23 @@ class LeetCodeClient:
                 "titleSlug": title_slug,
             },
         }
-        try:
-            response = self.client.post("/graphql/", json=payload, timeout=10)
-            response.raise_for_status()
-            result = response.json()
-        except httpx.RequestError:
-            return ClientResult(error=ClientErrorKind.NETWORK)
-        except httpx.HTTPStatusError:
-            return ClientResult(error=ClientErrorKind.HTTP)
-        except ValueError:
-            return ClientResult(error=ClientErrorKind.INVALID_JSON)
-        data = result.get("data", {})
+        result = self._request_json(
+            "POST",
+            "/graphql/",
+            json=payload,
+            timeout=10,
+        )
+        if not result.ok:
+            return result
+        response_payload = result.data
+        assert isinstance(response_payload, dict)
+        data = response_payload.get("data")
         if not isinstance(data, dict):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
-        return ClientResult(data=data.get("question"))
+        question = data.get("question")
+        if not isinstance(question, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        return ClientResult(data=question)
 
     def submit_solution(
         self, title_slug: str, question_id: str, code: str
@@ -274,45 +330,38 @@ class LeetCodeClient:
         csrftoken = self.client.cookies.get("csrftoken")
         if not csrftoken:
             return ClientResult(error=ClientErrorKind.MISSING_CSRF)
-        try:
-            response = self.client.post(
-                f"/problems/{title_slug}/submit/",
-                json=payload,
-                headers={
-                    "X-CSRFToken": csrftoken,
-                    "Referer": f"{BASE_URL}/problems/{title_slug}/",
-                },
-                timeout=10,
-            )
-            response.raise_for_status()
-            result = response.json()
-        except httpx.RequestError:
-            return ClientResult(error=ClientErrorKind.NETWORK)
-        except httpx.HTTPStatusError:
-            return ClientResult(error=ClientErrorKind.HTTP)
-        except ValueError:
-            return ClientResult(error=ClientErrorKind.INVALID_JSON)
-        submission_id = result.get("submission_id")
-        if not isinstance(submission_id, int):
+        result = self._request_json(
+            "POST",
+            f"/problems/{title_slug}/submit/",
+            json=payload,
+            headers={
+                "X-CSRFToken": csrftoken,
+                "Referer": f"{BASE_URL}/problems/{title_slug}/",
+            },
+            timeout=10,
+        )
+        if not result.ok:
+            return result
+        response_payload = result.data
+        assert isinstance(response_payload, dict)
+        submission_id = response_payload.get("submission_id")
+        if not isinstance(submission_id, int) or isinstance(submission_id, bool):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
         return ClientResult(data=submission_id)
 
     def get_submission_result(self, submission_id: int) -> ClientResult:
-        try:
-            response = self.client.get(
-                f"/submissions/detail/{submission_id}/check/", timeout=10
-            )
-            response.raise_for_status()
-            result = response.json()
-        except httpx.RequestError:
-            return ClientResult(error=ClientErrorKind.NETWORK)
-        except httpx.HTTPStatusError:
-            return ClientResult(error=ClientErrorKind.HTTP)
-        except ValueError:
-            return ClientResult(error=ClientErrorKind.INVALID_JSON)
-        if not isinstance(result, dict):
+        result = self._request_json(
+            "GET",
+            f"/submissions/detail/{submission_id}/check/",
+            timeout=10,
+        )
+        if not result.ok:
+            return result
+        payload = result.data
+        assert isinstance(payload, dict)
+        if not isinstance(payload.get("state"), str):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
-        return ClientResult(data=result)
+        return result
 
     def close(self) -> None:
         self.client.close()

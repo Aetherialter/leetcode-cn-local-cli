@@ -10,6 +10,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from aether_lc.doctor import DoctorReport, DoctorStatus
+
 console = Console(width=shutil.get_terminal_size(fallback=(120, 24)).columns)
 
 
@@ -169,7 +171,46 @@ def render_problem_detail(problem: Any) -> None:
 
 def render_submission_target(metadata: Any) -> None:
     console.print(
-        f"[bold cyan]当前提交目标：{metadata.problem_id}. {metadata.title}[/bold cyan]"
+        "[bold cyan]当前提交目标："
+        f"{metadata.problem_id}. {metadata.title} ({metadata.title_slug})"
+        "[/bold cyan]"
+    )
+
+
+def render_doctor_report(report: DoctorReport) -> None:
+    labels = {
+        "session": "Session 文件",
+        "connectivity": "LeetCode 接口",
+        "authentication": "Cookie 登录态",
+        "solution": "solution.py",
+    }
+    status_labels = {
+        DoctorStatus.PASS: ("PASS", "green"),
+        DoctorStatus.WARNING: ("WARNING", "yellow"),
+        DoctorStatus.FAIL: ("FAIL", "red"),
+    }
+    table = Table(title="环境诊断", expand=True)
+    table.add_column("检查项", style="cyan", no_wrap=True)
+    table.add_column("状态", justify="center", no_wrap=True)
+    table.add_column("结果", overflow="fold")
+    table.add_column("建议", overflow="fold")
+
+    for check in report.checks:
+        status_text, status_style = status_labels[check.status]
+        table.add_row(
+            labels.get(check.name, check.name),
+            f"[{status_style}]{status_text}[/{status_style}]",
+            check.message,
+            check.suggestion or "-",
+        )
+
+    border_style = "green" if report.ok else "red"
+    console.print(
+        Panel(
+            table,
+            border_style=border_style,
+            width=_terminal_width(),
+        )
     )
 
 

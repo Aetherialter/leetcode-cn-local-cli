@@ -1,12 +1,14 @@
 from typer import Typer, Exit
 from aether_lc.auth import (
+    SessionFileError,
     get_cookies_from_browser,
     get_cookies_from_input,
     save_session,
 )
-from aether_lc.client import LeetCodeClient
+from aether_lc.client import ClientErrorKind, LeetCodeClient
 from aether_lc.ui import (
     loading,
+    render_doctor_report,
     render_submission_result,
     success,
     warning,
@@ -16,13 +18,21 @@ from aether_lc.ui import (
     render_problem_list,
 )
 from aether_lc.service import (
+    client_error_message,
     get_account_profile,
+    get_doctor_report,
     get_problem_detail_by_question_id,
     get_problem_summaries,
     get_user_status,
     submit_current_solution,
 )
-from aether_lc.workspace import ProblemMetadata, run_solution_file, write_solution_file
+from aether_lc.workspace import (
+    ProblemMetadata,
+    SolutionFileStatus,
+    inspect_solution_file,
+    run_solution_file,
+    write_solution_file,
+)
 
 app = Typer(help="力扣中文站本地化刷题 CLI 工具")
 
@@ -32,32 +42,39 @@ def login() -> None:
     with loading("正在读取浏览器 Cookie..."):
         browser_result = get_cookies_from_browser()
     if not browser_result:
-        warning("未从浏览器读取到 Cookie, 请手动粘贴")
+        warning("未从浏览器读取到 Cookie，请手动粘贴")
         source, cookies = "manual", get_cookies_from_input()
     else:
         source, cookies = browser_result
     if not cookies:
-        warning("未获取 cookies")
+        warning("未获取有效 Cookie")
         raise Exit(1)
     with LeetCodeClient(cookies) as client:
         status_result = client.user_status()
         status = status_result.data
-        if (
-            status_result.ok
-            and isinstance(status_result.data, dict)
-            and status_result.data.get("isSignedIn")
-        ):
+        if not status_result.ok:
+            error(client_error_message(status_result.error))
+            raise Exit(1)
+        if isinstance(status, dict) and status.get("isSignedIn"):
+            username = status.get("username")
+            if not isinstance(username, str) or not username:
+                error(client_error_message(ClientErrorKind.INVALID_RESPONSE))
+                raise Exit(1)
+            try:
+                save_session(
+                    {
+                        "site": "leetcode.cn",
+                        "source": source,
+                        "username": username,
+                        "cookies": cookies,
+                    }
+                )
+            except SessionFileError as exc:
+                error(str(exc))
+                raise Exit(1)
             success("成功登录")
-            save_session(
-                {
-                    "site": "leetcode.cn",
-                    "source": source,
-                    "username": status["username"],
-                    "cookies": cookies,
-                }
-            )
         else:
-            warning("cookies 无效或过期")
+            warning("Cookie 无效或已过期")
             raise Exit(1)
 
 
@@ -91,7 +108,7 @@ def solve(question_id: str) -> None:
     problem_detail = get_problem_detail_by_question_id(question_id)
     render_problem_detail(problem_detail)
     if not problem_detail.python_code:
-        error("未找到 Python3 代码模板")
+        error("题目未提供 Python3 代码模板，无法生成 solution.py")
         raise Exit(1)
     if (
         not problem_detail.question_id
@@ -114,11 +131,40 @@ def solve(question_id: str) -> None:
 
 @app.command()
 def test() -> None:
+    inspection = inspect_solution_file()
+    match inspection.status:
+        case SolutionFileStatus.MISSING:
+            error("未找到 solution.py，请先执行 lc solve <题号>")
+            raise Exit(1)
+        case SolutionFileStatus.EMPTY:
+            error("solution.py 当前为空，请先执行 lc solve <题号>")
+            raise Exit(1)
+        case SolutionFileStatus.READ_ERROR:
+            error("无法读取 solution.py，请检查文件权限")
+            raise Exit(1)
+        case SolutionFileStatus.INVALID_SYNTAX:
+            line = (
+                f"第 {inspection.syntax_line} 行"
+                if inspection.syntax_line
+                else "未知行"
+            )
+            error(f"solution.py 存在 Python 语法错误（{line}）")
+            raise Exit(1)
+
     result = run_solution_file()
     if result.returncode:
         error("本地测试失败")
         raise Exit(result.returncode)
     success("本地测试通过")
+
+
+@app.command()
+def doctor() -> None:
+    with loading("正在检查本地环境与 LeetCode 连接..."):
+        report = get_doctor_report()
+    render_doctor_report(report)
+    if not report.ok:
+        raise Exit(1)
 
 
 @app.command()

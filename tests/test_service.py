@@ -3,6 +3,7 @@ from typer import Exit
 
 from aether_lc import service
 from aether_lc.client import ClientErrorKind, ClientResult
+from aether_lc.doctor import DoctorCheck, DoctorStatus
 from aether_lc.workspace import ProblemMetadata
 
 
@@ -17,12 +18,47 @@ class FakeClient:
         return None
 
 
+@pytest.fixture(autouse=True)
+def valid_session_inspection(monkeypatch) -> None:
+    monkeypatch.setattr(service, "diagnose_session", lambda: _check("session"))
+
+
+def _session_data() -> dict:
+    return {
+        "cookies": {
+            "LEETCODE_SESSION": "session-value",
+            "csrftoken": "csrf-value",
+        }
+    }
+
+
+def test_load_cookies_stops_on_failed_session_inspection(monkeypatch) -> None:
+    monkeypatch.setattr(
+        service,
+        "diagnose_session",
+        lambda: DoctorCheck(
+            name="session",
+            status=DoctorStatus.FAIL,
+            message="Session 文件结构无效",
+            suggestion="请重新登录",
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "load_session",
+        lambda: (_ for _ in ()).throw(AssertionError("should not load")),
+    )
+
+    with pytest.raises(Exit):
+        service._load_cookies_from_session()
+
+
 def test_get_user_status_exits_on_client_error(monkeypatch) -> None:
     class ErrorClient(FakeClient):
         def user_status(self) -> ClientResult:
             return ClientResult(error=ClientErrorKind.NETWORK)
 
-    monkeypatch.setattr(service, "load_session", lambda: {"cookies": {"k": "v"}})
+    monkeypatch.setattr(service, "load_session", _session_data)
     monkeypatch.setattr(service, "LeetCodeClient", ErrorClient)
 
     with pytest.raises(Exit):
@@ -34,7 +70,7 @@ def test_get_problem_summaries_exits_on_invalid_response(monkeypatch) -> None:
         def problem_list(self, limit: int = 50, skip: int = 0) -> ClientResult:
             return ClientResult(data=None)
 
-    monkeypatch.setattr(service, "load_session", lambda: {"cookies": {"k": "v"}})
+    monkeypatch.setattr(service, "load_session", _session_data)
     monkeypatch.setattr(service, "LeetCodeClient", InvalidProblemListClient)
 
     with pytest.raises(Exit):
@@ -95,8 +131,10 @@ def test_submit_current_solution_returns_submission_result_data(monkeypatch) -> 
                 }
             )
 
-    monkeypatch.setattr(service, "load_session", lambda: {"cookies": {"k": "v"}})
+    monkeypatch.setattr(service, "load_session", _session_data)
     monkeypatch.setattr(service, "LeetCodeClient", SubmitClient)
+    rendered_targets = []
+    monkeypatch.setattr(service, "render_submission_target", rendered_targets.append)
     monkeypatch.setattr(
         service,
         "parse_solution_submission",
@@ -117,3 +155,42 @@ def test_submit_current_solution_returns_submission_result_data(monkeypatch) -> 
         "state": "SUCCESS",
         "status_msg": "Accepted",
     }
+    assert rendered_targets[0].problem_id == "1"
+
+
+def test_get_doctor_report_collects_local_and_remote_checks(monkeypatch) -> None:
+    class DoctorClient(FakeClient):
+        def user_status(self) -> ClientResult:
+            return ClientResult(data={"isSignedIn": True, "username": "learner"})
+
+    monkeypatch.setattr(
+        service,
+        "load_session",
+        lambda: {
+            "cookies": {
+                "LEETCODE_SESSION": "session-value",
+                "csrftoken": "csrf-value",
+            }
+        },
+    )
+    monkeypatch.setattr(service, "LeetCodeClient", DoctorClient)
+    monkeypatch.setattr(
+        service,
+        "diagnose_session",
+        lambda: _check("session"),
+    )
+    monkeypatch.setattr(service, "diagnose_solution", lambda: _check("solution"))
+
+    report = service.get_doctor_report()
+
+    assert [check.name for check in report.checks] == [
+        "session",
+        "connectivity",
+        "authentication",
+        "solution",
+    ]
+    assert report.ok
+
+
+def _check(name: str) -> DoctorCheck:
+    return DoctorCheck(name=name, status=DoctorStatus.PASS, message="ok")

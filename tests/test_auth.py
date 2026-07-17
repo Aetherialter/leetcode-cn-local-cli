@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 
 import pytest
 
@@ -160,3 +162,57 @@ def test_load_session_preserves_existing_success_and_failure_contract(
 
     session_file.unlink()
     assert auth.load_session() is None
+
+
+def test_save_session_writes_atomically_with_private_permissions(tmp_path) -> None:
+    session_file = tmp_path / "session.json"
+    session_data = {
+        "cookies": {
+            "LEETCODE_SESSION": "session-value",
+            "csrftoken": "csrf-value",
+        }
+    }
+
+    auth.save_session(session_data, session_file)
+
+    assert json.loads(session_file.read_text(encoding="utf-8")) == session_data
+    assert not session_file.with_suffix(".json.tmp").exists()
+    if os.name != "nt":
+        assert stat.S_IMODE(session_file.stat().st_mode) == 0o600
+
+
+def test_save_session_cleans_temporary_file_after_serialization_error(
+    tmp_path,
+) -> None:
+    session_file = tmp_path / "session.json"
+
+    with pytest.raises(auth.SessionFileError, match="无法保存 Session 文件"):
+        auth.save_session({"invalid": object()}, session_file)
+
+    assert not session_file.exists()
+    assert not session_file.with_suffix(".json.tmp").exists()
+
+
+def test_load_session_raises_clear_error_for_unreadable_path(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(auth, "SESSION_FILE", tmp_path)
+
+    with pytest.raises(auth.SessionFileError, match="无法读取 Session 文件"):
+        auth.load_session()
+
+
+def test_parse_cookie_header_extracts_required_cookies() -> None:
+    result = auth.parse_cookie_header(
+        "other=value; LEETCODE_SESSION=session=with=equals; csrftoken=csrf"
+    )
+
+    assert result == {
+        "LEETCODE_SESSION": "session=with=equals",
+        "csrftoken": "csrf",
+    }
+
+
+def test_parse_cookie_header_rejects_missing_required_cookie() -> None:
+    assert auth.parse_cookie_header("LEETCODE_SESSION=session") is None

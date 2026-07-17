@@ -78,10 +78,24 @@ def normalize_problem_summary(raw: dict[str, Any]) -> ProblemSummary:
     question_id = raw.get("frontendQuestionId", "")
     question_id = str(question_id) if isinstance(question_id, (str, int)) else ""
     title = raw.get("title", "")
+    title = title if isinstance(title, str) else ""
     title_slug = raw.get("titleSlug", "")
+    title_slug = title_slug if isinstance(title_slug, str) else ""
     difficulty = raw.get("difficulty", "")
+    difficulty = difficulty if isinstance(difficulty, str) else ""
     paid_only = bool(raw.get("paidOnly", False))
-    tags = [tag.get("name", "") for tag in raw.get("topicTags", [])]
+    raw_tags = raw.get("topicTags")
+    tags = (
+        [
+            name
+            for tag in raw_tags
+            if isinstance(tag, dict)
+            and isinstance((name := tag.get("name")), str)
+            and name
+        ]
+        if isinstance(raw_tags, list)
+        else []
+    )
 
     return ProblemSummary(
         question_id=question_id,
@@ -109,24 +123,44 @@ def find_problem_by_id(
     return None
 
 
-def extract_python_code(code_snippets: list[dict[str, Any]]) -> str | None:
+def extract_python_code(code_snippets: Any) -> str | None:
+    if not isinstance(code_snippets, list):
+        return None
     for snippet in code_snippets:
+        if not isinstance(snippet, dict):
+            continue
         if snippet.get("langSlug") == "python3":
-            return snippet.get("code", "")
+            code = snippet.get("code")
+            return code if isinstance(code, str) else None
 
     return None
 
 
 def normalize_problem_detail(raw: dict[str, Any]) -> ProblemDetail:
-    tags = [tag.get("name", "") for tag in raw.get("topicTags", [])]
+    raw_tags = raw.get("topicTags")
+    tags = (
+        [
+            name
+            for tag in raw_tags
+            if isinstance(tag, dict)
+            and isinstance((name := tag.get("name")), str)
+            and name
+        ]
+        if isinstance(raw_tags, list)
+        else []
+    )
+
+    def text(key: str) -> str:
+        value = raw.get(key)
+        return value if isinstance(value, str) else ""
 
     return ProblemDetail(
-        question_id=raw.get("questionFrontendId", ""),
-        submit_question_id=raw.get("questionId", ""),
-        title=raw.get("translatedTitle") or raw.get("title", ""),
-        title_slug=raw.get("titleSlug", ""),
-        difficulty=raw.get("difficulty", ""),
+        question_id=text("questionFrontendId"),
+        submit_question_id=text("questionId"),
+        title=text("translatedTitle") or text("title"),
+        title_slug=text("titleSlug"),
+        difficulty=text("difficulty"),
         tags=tags,
-        content_html=raw.get("translatedContent") or raw.get("content", ""),
-        python_code=extract_python_code(raw.get("codeSnippets", [])),
+        content_html=text("translatedContent") or text("content"),
+        python_code=extract_python_code(raw.get("codeSnippets")),
     )

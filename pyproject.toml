@@ -1,6 +1,6 @@
 [project]
 name = "aether-lc"
-version = "0.5.7"
+version = "0.6.0"
 description = "Local coding workflow CLI for LeetCode CN."
 readme = "README.md"
 license = "MIT"
@@ -16,7 +16,6 @@ classifiers = [
 dependencies = [
     "browser-cookie3>=0.20.1",
     "httpx>=0.28.1",
-    "requests>=2.34.2",
     "rich>=15.0.0",
     "typer>=0.25.1",
 ]
@@ -30,6 +29,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.411",
     "pytest>=9.0.3",
     "ruff>=0.15.13",
 ]

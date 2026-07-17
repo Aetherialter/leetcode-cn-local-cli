@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 import subprocess
 import sys
@@ -49,6 +50,30 @@ class WorkspaceError(ValueError):
     pass
 
 
+class SolutionFileStatus(str, Enum):
+    READY = "ready"
+    MISSING = "missing"
+    EMPTY = "empty"
+    READ_ERROR = "read_error"
+    INVALID_SYNTAX = "invalid_syntax"
+    NOT_SUBMITTABLE = "not_submittable"
+
+
+@dataclass(frozen=True)
+class SolutionFileInspection:
+    status: SolutionFileStatus
+    metadata: ProblemMetadata | None = None
+    detail: str = ""
+    syntax_line: int | None = None
+
+
+def _normalize_python_code(python_code: str) -> str:
+    code = python_code.rstrip()
+    if code and code.splitlines()[-1].rstrip().endswith(":"):
+        return f"{code} pass"
+    return code
+
+
 def build_solution_content(python_code: str, metadata: ProblemMetadata) -> str:
     metadata_content = (
         f"{METADATA_PREFIX}problem_id: {metadata.problem_id}\n"
@@ -61,7 +86,7 @@ def build_solution_content(python_code: str, metadata: ProblemMetadata) -> str:
         f"{metadata_content}"
         f"{SOLUTION_IMPORTS}\n\n"
         f"{START_FLAG}\n"
-        f"{python_code.rstrip()} pass\n"
+        f"{_normalize_python_code(python_code)}\n"
         f"{END_FLAG}\n\n"
         f"{SOLUTION_CASE}\n"
     )
@@ -91,40 +116,45 @@ def open_path(path: Path) -> None:
         pass
 
 
-def run_solution_file() -> subprocess.CompletedProcess[str]:
+def run_solution_file(
+    path: Path | None = None,
+    *,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    solution_file = path or SOLUTION_FILE
     return subprocess.run(
-        ["uv", "run", "python", str(SOLUTION_FILE)],
+        [sys.executable, str(solution_file)],
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
+        timeout=timeout,
     )
 
 
-def parse_solution_submission() -> tuple[ProblemMetadata, str]:
+def _parse_solution_submission_content(content: str) -> tuple[ProblemMetadata, str]:
     metadata: dict[str, str] = {}
     start_flag = end_flag = False
-    content = ""
-    with SOLUTION_FILE.open(mode="r", encoding="utf-8") as file:
-        for string in file:
-            line = string.strip()
-            if line == END_FLAG:
-                end_flag = True
-                break
-            if start_flag:
-                content += string
-            if line.startswith(METADATA_PREFIX):
-                item = line.removeprefix(METADATA_PREFIX)
-                key, separator, value = item.partition(":")
-                if separator:
-                    metadata[key.strip()] = value.strip()
-            if line == START_FLAG:
-                start_flag = True
+    submission_lines: list[str] = []
+    for string in content.splitlines(keepends=True):
+        line = string.strip()
+        if line == END_FLAG:
+            end_flag = True
+            break
+        if start_flag:
+            submission_lines.append(string)
+        if line.startswith(METADATA_PREFIX):
+            item = line.removeprefix(METADATA_PREFIX)
+            key, separator, value = item.partition(":")
+            if separator:
+                metadata[key.strip()] = value.strip()
+        if line == START_FLAG:
+            start_flag = True
 
     if not start_flag or not end_flag:
         raise WorkspaceError("solution.py 提交区域标记不完整，请先执行 lc solve <题号>")
 
-    content = content.strip()
-    if not content:
+    submission_code = "".join(submission_lines).strip()
+    if not submission_code:
         raise WorkspaceError("solution.py 提交区域为空")
 
     if not all(
@@ -136,7 +166,7 @@ def parse_solution_submission() -> tuple[ProblemMetadata, str]:
         ]
     ):
         raise WorkspaceError(
-            "solution.py 缺少元数据(problem_id, submit_question_id, title, title_slug)"
+            "solution.py 缺少元数据：problem_id、submit_question_id、title、title_slug"
         )
 
     return (
@@ -146,5 +176,53 @@ def parse_solution_submission() -> tuple[ProblemMetadata, str]:
             title=metadata["title"],
             title_slug=metadata["title_slug"],
         ),
-        content,
+        submission_code,
+    )
+
+
+def parse_solution_submission(
+    path: Path | None = None,
+) -> tuple[ProblemMetadata, str]:
+    solution_file = path or SOLUTION_FILE
+    try:
+        content = solution_file.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise WorkspaceError("未找到 solution.py，请先执行 lc solve <题号>") from exc
+    except OSError as exc:
+        raise WorkspaceError("无法读取 solution.py，请检查文件权限") from exc
+    return _parse_solution_submission_content(content)
+
+
+def inspect_solution_file(path: Path | None = None) -> SolutionFileInspection:
+    solution_file = path or SOLUTION_FILE
+    try:
+        content = solution_file.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return SolutionFileInspection(status=SolutionFileStatus.MISSING)
+    except OSError:
+        return SolutionFileInspection(status=SolutionFileStatus.READ_ERROR)
+
+    if not content.strip():
+        return SolutionFileInspection(status=SolutionFileStatus.EMPTY)
+
+    try:
+        compile(content, str(solution_file), "exec")
+    except SyntaxError as exc:
+        return SolutionFileInspection(
+            status=SolutionFileStatus.INVALID_SYNTAX,
+            detail=exc.msg,
+            syntax_line=exc.lineno,
+        )
+
+    try:
+        metadata, _ = _parse_solution_submission_content(content)
+    except WorkspaceError as exc:
+        return SolutionFileInspection(
+            status=SolutionFileStatus.NOT_SUBMITTABLE,
+            detail=str(exc),
+        )
+
+    return SolutionFileInspection(
+        status=SolutionFileStatus.READY,
+        metadata=metadata,
     )

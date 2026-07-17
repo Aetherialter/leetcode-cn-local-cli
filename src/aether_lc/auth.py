@@ -1,8 +1,11 @@
-from enum import Enum
-from dataclasses import dataclass
-import browser_cookie3
-from pathlib import Path
 import json
+import os
+from dataclasses import dataclass
+from enum import Enum
+from getpass import getpass
+from pathlib import Path
+
+import browser_cookie3
 
 LC_DOMAIN = "leetcode.cn"
 # BROWSER_LOADERS = [("Edge", browser_cookie3.edge), ("Chrome", browser_cookie3.chrome)]
@@ -31,6 +34,10 @@ class SessionFileInspection:
     source: str | None = None
 
 
+class SessionFileError(OSError):
+    pass
+
+
 def get_cookies_from_browser() -> tuple[str, dict[str, str]] | None:
     for browser_name, loader in BROWSER_LOADERS:
         try:
@@ -57,8 +64,7 @@ def get_cookies_from_browser() -> tuple[str, dict[str, str]] | None:
     return None
 
 
-def get_cookies_from_input() -> dict[str, str] | None:
-    cookies = input("请输入你的cookies\n")
+def parse_cookie_header(cookies: str) -> dict[str, str] | None:
     cookies_dict = {}
     for item in cookies.split(";"):
         if "=" in item:
@@ -74,11 +80,31 @@ def get_cookies_from_input() -> dict[str, str] | None:
     return None
 
 
-def save_session(session_data: dict) -> None:
-    file_path = SESSION_FILE
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(session_data, f, indent=4, ensure_ascii=False)
+def get_cookies_from_input() -> dict[str, str] | None:
+    return parse_cookie_header(getpass("请粘贴 Cookie（输入内容不会回显）：\n"))
+
+
+def save_session(session_data: dict, path: Path | None = None) -> None:
+    file_path = path or SESSION_FILE
+    temporary_file = file_path.with_suffix(f"{file_path.suffix}.tmp")
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(
+            temporary_file,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            json.dump(session_data, file, indent=4, ensure_ascii=False)
+        os.chmod(temporary_file, 0o600)
+        temporary_file.replace(file_path)
+        os.chmod(file_path, 0o600)
+    except (OSError, TypeError, ValueError) as exc:
+        try:
+            temporary_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise SessionFileError("无法保存 Session 文件") from exc
 
 
 def load_session() -> dict | None:
@@ -90,6 +116,8 @@ def load_session() -> dict | None:
         return None
     except json.JSONDecodeError:
         return None
+    except OSError as exc:
+        raise SessionFileError("无法读取 Session 文件") from exc
 
 
 def inspect_session_file(path: Path | None = None) -> SessionFileInspection:
