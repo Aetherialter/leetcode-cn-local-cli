@@ -12,7 +12,7 @@ LC_DOMAIN = "leetcode.cn"
 BROWSER_LOADERS = [("Chrome", browser_cookie3.chrome)]
 
 REQUIRED_COOKIE_NAMES = ("LEETCODE_SESSION", "csrftoken")
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path.cwd()
 SESSION_DIR = PROJECT_ROOT / ".aether_lc"
 SESSION_FILE = SESSION_DIR / "session.json"
 

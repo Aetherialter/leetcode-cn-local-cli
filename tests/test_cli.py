@@ -8,6 +8,15 @@ from aether_lc.workspace import SolutionFileInspection, SolutionFileStatus
 runner = CliRunner()
 
 
+def test_version_option_displays_installed_distribution_version(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "get_version", lambda: "1.2.3")
+
+    result = runner.invoke(cli.app, ["--version"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "aether-lc 1.2.3"
+
+
 def test_help_registers_doctor_command() -> None:
     result = runner.invoke(cli.app, ["--help"])
 

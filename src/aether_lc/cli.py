@@ -1,4 +1,7 @@
-from typer import Typer, Exit
+from typing import Annotated
+
+from typer import Exit, Option, Typer, echo
+
 from aether_lc.auth import (
     SessionFileError,
     get_cookies_from_browser,
@@ -33,8 +36,30 @@ from aether_lc.workspace import (
     run_solution_file,
     write_solution_file,
 )
+from aether_lc.version import get_version
 
-app = Typer(help="力扣中文站本地化刷题 CLI 工具")
+app = Typer(help="力扣中文站本地化刷题 CLI 工具", no_args_is_help=True)
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        echo(f"aether-lc {get_version()}")
+        raise Exit()
+
+
+@app.callback()
+def main(
+    version: Annotated[
+        bool,
+        Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="显示版本并退出",
+        ),
+    ] = False,
+) -> None:
+    """力扣中文站本地化刷题 CLI 工具。"""
 
 
 @app.command()

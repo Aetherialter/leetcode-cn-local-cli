@@ -1,6 +1,6 @@
 # 力扣中文站本地化刷题 CLI 工具
 
-一个面向 LeetCode 中文站的轻量本地刷题 CLI。它复用浏览器登录态，在线获取题目，生成根目录单文件 `solution.py`，并支持本地测试和远程提交。
+一个面向 LeetCode 中文站的轻量本地刷题 CLI。它复用浏览器登录态，在线获取题目，在当前工作目录生成单文件 `solution.py`，并支持本地测试和远程提交。
 
 当前版本：`v0.6.0`
 
@@ -8,7 +8,7 @@
 
 - 读取 Chrome 中的 `leetcode.cn` Cookie，复用登录态。
 - 在线获取题目详情和题目索引。
-- 使用根目录 `solution.py` 作为唯一主要工作区。
+- 使用当前工作目录的 `solution.py` 作为唯一主要工作区。
 - `lc solve <题号>` 生成可编辑的 Python 解题模板。
 - 生成模板后会按当前系统尝试打开 `solution.py`。
 - `lc test` 运行 `solution.py` 中的 `run_cases()`。
@@ -27,12 +27,38 @@
 
 ## 安装
 
+当前稳定版仍使用源码开发方式：
+
 ```shell
 git clone https://github.com/Aetherialter/leetcode-cn-local-cli.git
 cd leetcode-cn-local-cli
 uv sync
 uv run lc --help
 ```
+
+v0.7 正在加入基于 `uv tool install` 的全局安装器。安装器会在缺少 uv 时调用 uv 官方 HTTPS 安装程序，并在安装后通过 `lc --version` 验证结果。正式包发布前，可使用本地 wheel 验证：
+
+```shell
+uv build
+AETHER_LC_INSTALL_SPEC="$PWD/dist/aether_lc-0.6.0-py3-none-any.whl" \
+  AETHER_LC_NO_MODIFY_PATH=1 \
+  UV_TOOL_DIR=/tmp/aether-lc-tools \
+  UV_TOOL_BIN_DIR=/tmp/aether-lc-bin \
+  ./scripts/install.sh
+```
+
+Windows PowerShell：
+
+```powershell
+uv build
+$env:AETHER_LC_INSTALL_SPEC = "$PWD\dist\aether_lc-0.6.0-py3-none-any.whl"
+$env:AETHER_LC_NO_MODIFY_PATH = "1"
+$env:UV_TOOL_DIR = "$env:TEMP\aether-lc-tools"
+$env:UV_TOOL_BIN_DIR = "$env:TEMP\aether-lc-bin"
+.\scripts\install.ps1
+```
+
+以上额外环境变量仅用于隔离开发验收；正常的一键安装会使用用户级 uv 工具目录并自动调用 `uv tool update-shell`。
 
 ## 基本工作流
 
@@ -55,14 +81,14 @@ uv run lc submit
 | `lc profile` | 展示账号和刷题统计 |
 | `lc show --limit 20 --skip 0` | 分页展示题目索引，`limit` 单次最大为 100 |
 | `lc get <题号>` | 在线展示题目详情 |
-| `lc solve <题号>` | 覆盖生成根目录 `solution.py` |
+| `lc solve <题号>` | 覆盖生成当前目录的 `solution.py` |
 | `lc test` | 运行本地 `solution.py` |
 | `lc doctor` | 诊断 Session、网络、Cookie 和 `solution.py` |
 | `lc submit` | 提交当前 `solution.py` 的提交区域代码 |
 
 ## solution.py 规则
 
-`lc solve` 会覆盖根目录 `solution.py`。切换题目前请自行保存当前解法。
+`lc solve` 会覆盖当前目录的 `solution.py`。切换题目前请自行保存当前解法。
 
 生成文件会包含题目元信息和提交区域：
 
@@ -96,7 +122,7 @@ class Solution:
 - 当前仅自动读取 Chrome Cookie。
 - `lc solve` 生成模板后会尝试打开 `solution.py`；Windows 使用系统默认打开方式，macOS 使用 `open`，Linux 使用 `xdg-open`。
 - 当前远程提交仅支持 Python3。
-- 当前只维护根目录单个 `solution.py`，不会生成每题独立目录。
+- 当前只维护 CLI 启动目录中的单个 `solution.py`，不会生成每题独立目录。
 - 当前不保存完整题面到本地，也不引入本地数据库。
 - `lc solve` 会强制覆盖 `solution.py`。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
@@ -113,11 +139,11 @@ class Solution:
 .aether_lc/session.json
 ```
 
-该文件可能包含敏感 Cookie 信息，已在 `.gitignore` 中忽略。发布前请确认根目录 `solution.py` 为空，避免把个人解法提交到公开仓库。
+该文件可能包含敏感 Cookie 信息，已在 `.gitignore` 中忽略。发布前请确认仓库根目录的 `solution.py` 为空，避免把个人解法提交到公开仓库。
 
 ## 登录态说明
 
-Aether_lc 会把浏览器 Cookie 的本地副本保存到 `.aether_lc/session.json`。本地保存的 Cookie 不会延长 LeetCode 登录态有效期；实际是否有效以 LeetCode 服务端验证为准。
+Aether_lc 会把浏览器 Cookie 的本地副本保存到 CLI 启动目录下的 `.aether_lc/session.json`。本地保存的 Cookie 不会延长 LeetCode 登录态有效期；实际是否有效以 LeetCode 服务端验证为准。v0.8 的 `lc init` 会进一步将用户登录态与工作区分离。
 
 如果浏览器 Cookie 刷新，或旧 Cookie 被服务端判定失效，CLI 可能在 `lc status`、`lc profile` 或 `lc submit` 时提示重新执行：
 
@@ -146,6 +172,7 @@ uv run pytest
 
 ```shell
 uv run lc --help
+uv run lc --version
 uv run lc doctor
 uv run lc get 2196
 uv run lc solve 1
@@ -164,12 +191,17 @@ src/aether_lc/
   problem.py    题号解析与题目数据标准化
   service.py    应用层流程编排
   ui.py         Rich 终端输出
+  version.py    已安装发行版版本读取
   workspace.py  solution.py 生成、解析与运行
+scripts/
+  install.sh    Linux/macOS 一键安装器
+  install.ps1   Windows PowerShell 一键安装器
 tests/
   test_auth.py
   test_cli.py
   test_client.py
   test_doctor.py
+  test_install_scripts.py
   test_problem.py
   test_service.py
   test_ui.py
@@ -184,9 +216,10 @@ tests/
 - `v0.5.6`: 收束 `lc show` 参数校验，避免非法分页参数触发远端接口异常提示。
 - `v0.5.7`: 修复非 Windows 环境导入 `os.startfile` 导致 CLI 无法启动的问题。
 - `v0.6.0`: 新增 `lc doctor`，完善客户端边界校验、本地文件诊断、错误提示和提交目标展示。
-- `v0.7`: 轻量缓存。
-- `v0.8`: 样例提取原型。
-- `v0.9`: 打包、测试与 GitHub Actions。
+- `v0.7`: uv 全局工具安装与跨平台引导脚本。
+- `v0.8`: `lc init` 与正式工作区管理。
+- `v0.9`: 轻量缓存。
+- `v0.10`: 样例提取原型。
 - `v1.0`: 稳定轻量 CLI。
 
 ## License
