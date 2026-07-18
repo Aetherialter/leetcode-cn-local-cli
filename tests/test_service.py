@@ -1,10 +1,10 @@
 import pytest
 from typer import Exit
 
-from aether_lc import service
-from aether_lc.client import ClientErrorKind, ClientResult
-from aether_lc.doctor import DoctorCheck, DoctorStatus
-from aether_lc.workspace import ProblemMetadata
+from leetcode_local_cli import service
+from leetcode_local_cli.client import ClientErrorKind, ClientResult
+from leetcode_local_cli.doctor import DoctorCheck, DoctorStatus
+from leetcode_local_cli.workspace import ProblemMetadata
 
 
 class FakeClient:

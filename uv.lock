@@ -3,39 +3,6 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-name = "aether-lc"
-version = "0.7.0"
-source = { editable = "." }
-dependencies = [
-    { name = "browser-cookie3" },
-    { name = "httpx" },
-    { name = "rich" },
-    { name = "typer" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "browser-cookie3", specifier = ">=0.20.1" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "rich", specifier = ">=15.0.0" },
-    { name = "typer", specifier = ">=0.25.1" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pyright", specifier = ">=1.1.411" },
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "ruff", specifier = ">=0.15.13" },
-]
-
-[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -164,6 +131,39 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7b/6f/357efd7602486741aa73ffc0617fb310a29b588ed0fd69c2399acbb85b0c/jeepney-0.9.0.tar.gz", hash = "sha256:cf0e9e845622b81e4a28df94c40345400256ec608d0e55bb8a3feaa9163f5732", size = 106758, upload-time = "2025-02-27T18:51:01.684Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b2/a3/e137168c9c44d18eff0376253da9f1e9234d0239e0ee230d2fee6cea8e55/jeepney-0.9.0-py3-none-any.whl", hash = "sha256:97e5714520c16fc0a45695e5365a2e11b81ea79bba796e26f9f1d178cb182683", size = 49010, upload-time = "2025-02-27T18:51:00.104Z" },
+]
+
+[[package]]
+name = "leetcode-local-cli"
+version = "0.7.0"
+source = { editable = "." }
+dependencies = [
+    { name = "browser-cookie3" },
+    { name = "httpx" },
+    { name = "rich" },
+    { name = "typer" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "browser-cookie3", specifier = ">=0.20.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "rich", specifier = ">=15.0.0" },
+    { name = "typer", specifier = ">=0.25.1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pyright", specifier = ">=1.1.411" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "ruff", specifier = ">=0.15.13" },
 ]
 
 [[package]]

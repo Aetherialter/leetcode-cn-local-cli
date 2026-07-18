@@ -2,16 +2,20 @@ from time import sleep
 
 from typer import Exit
 
-from aether_lc.auth import REQUIRED_COOKIE_NAMES, SessionFileError, load_session
-from aether_lc.client import ClientErrorKind, LeetCodeClient
-from aether_lc.doctor import (
+from leetcode_local_cli.auth import (
+    REQUIRED_COOKIE_NAMES,
+    SessionFileError,
+    load_session,
+)
+from leetcode_local_cli.client import ClientErrorKind, LeetCodeClient
+from leetcode_local_cli.doctor import (
     DoctorReport,
     DoctorStatus,
     diagnose_remote,
     diagnose_session,
     diagnose_solution,
 )
-from aether_lc.problem import (
+from leetcode_local_cli.problem import (
     ProblemDetail,
     ProblemSummary,
     find_problem_by_id,
@@ -19,8 +23,8 @@ from aether_lc.problem import (
     normalize_problem_summaries,
     parse_question_id,
 )
-from aether_lc.ui import error, loading, render_submission_target, warning
-from aether_lc.workspace import WorkspaceError, parse_solution_submission
+from leetcode_local_cli.ui import error, loading, render_submission_target, warning
+from leetcode_local_cli.workspace import WorkspaceError, parse_solution_submission
 
 
 MAX_ATTEMPTS = 10

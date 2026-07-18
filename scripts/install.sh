@@ -2,27 +2,27 @@
 
 set -eu
 
-UV_INSTALL_URL=${AETHER_LC_UV_INSTALL_URL:-https://astral.sh/uv/install.sh}
-INSTALL_SPEC=${AETHER_LC_INSTALL_SPEC:-aether-lc}
+UV_INSTALL_URL=${LEETCODE_LOCAL_CLI_UV_INSTALL_URL:-https://astral.sh/uv/install.sh}
+INSTALL_SPEC=${LEETCODE_LOCAL_CLI_INSTALL_SPEC:-leetcode-local-cli}
 TEMP_DIR=""
 
 case "$INSTALL_SPEC" in
     *http://*)
-        printf '%s\n' "[aether-lc] 错误：包安装地址必须使用 HTTPS：$INSTALL_SPEC" >&2
+        printf '%s\n' "[leetcode-local-cli] 错误：包安装地址必须使用 HTTPS：$INSTALL_SPEC" >&2
         exit 1
         ;;
 esac
 
 info() {
-    printf '%s\n' "[aether-lc] $*"
+    printf '%s\n' "[leetcode-local-cli] $*"
 }
 
 warn() {
-    printf '%s\n' "[aether-lc] 警告：$*" >&2
+    printf '%s\n' "[leetcode-local-cli] 警告：$*" >&2
 }
 
 fail() {
-    printf '%s\n' "[aether-lc] 错误：$*" >&2
+    printf '%s\n' "[leetcode-local-cli] 错误：$*" >&2
     exit 1
 }
 
@@ -76,7 +76,7 @@ info "使用 uv：$UV_PATH"
 info "正在安装：$INSTALL_SPEC"
 "$UV_PATH" tool install --force "$INSTALL_SPEC"
 
-if [ "${AETHER_LC_NO_MODIFY_PATH:-0}" != "1" ]; then
+if [ "${LEETCODE_LOCAL_CLI_NO_MODIFY_PATH:-0}" != "1" ]; then
     if ! "$UV_PATH" tool update-shell >/dev/null 2>&1; then
         warn "无法自动更新 PATH；请执行 '$UV_PATH tool update-shell'"
     fi

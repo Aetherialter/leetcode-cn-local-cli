@@ -13,8 +13,10 @@ BROWSER_LOADERS = [("Chrome", browser_cookie3.chrome)]
 
 REQUIRED_COOKIE_NAMES = ("LEETCODE_SESSION", "csrftoken")
 PROJECT_ROOT = Path.cwd()
-SESSION_DIR = PROJECT_ROOT / ".aether_lc"
+SESSION_DIR = PROJECT_ROOT / ".leetcode_local_cli"
 SESSION_FILE = SESSION_DIR / "session.json"
+LEGACY_SESSION_DIR = PROJECT_ROOT / ".aether_lc"
+LEGACY_SESSION_FILE = LEGACY_SESSION_DIR / "session.json"
 
 
 class SessionFileStatus(str, Enum):
@@ -36,6 +38,31 @@ class SessionFileInspection:
 
 class SessionFileError(OSError):
     pass
+
+
+def _resolve_default_session_file() -> Path:
+    """Move the pre-v0.7 session to the canonical directory when possible."""
+    if SESSION_FILE.exists() or not LEGACY_SESSION_FILE.exists():
+        return SESSION_FILE
+
+    try:
+        SESSION_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if os.name != "nt":
+            os.chmod(SESSION_DIR, 0o700)
+        LEGACY_SESSION_FILE.replace(SESSION_FILE)
+        if os.name != "nt":
+            os.chmod(SESSION_FILE, 0o600)
+        try:
+            LEGACY_SESSION_DIR.rmdir()
+        except OSError:
+            # Preserve a non-empty legacy directory instead of deleting unrelated data.
+            pass
+    except OSError:
+        if SESSION_FILE.exists():
+            return SESSION_FILE
+        return LEGACY_SESSION_FILE
+
+    return SESSION_FILE
 
 
 def get_cookies_from_browser() -> tuple[str, dict[str, str]] | None:
@@ -85,10 +112,14 @@ def get_cookies_from_input() -> dict[str, str] | None:
 
 
 def save_session(session_data: dict, path: Path | None = None) -> None:
+    if path is None:
+        _resolve_default_session_file()
     file_path = path or SESSION_FILE
     temporary_file = file_path.with_suffix(f"{file_path.suffix}.tmp")
     try:
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if path is None and os.name != "nt":
+            os.chmod(file_path.parent, 0o700)
         descriptor = os.open(
             temporary_file,
             os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
@@ -108,7 +139,7 @@ def save_session(session_data: dict, path: Path | None = None) -> None:
 
 
 def load_session() -> dict | None:
-    file_path = SESSION_FILE
+    file_path = _resolve_default_session_file()
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -122,7 +153,7 @@ def load_session() -> dict | None:
 
 def inspect_session_file(path: Path | None = None) -> SessionFileInspection:
     if path is None:
-        path = SESSION_FILE
+        path = _resolve_default_session_file()
 
     try:
         content = path.read_text(encoding="utf-8")

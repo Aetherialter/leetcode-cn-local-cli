@@ -1,6 +1,6 @@
 # 发布流程
 
-`aether-lc` 使用 GitHub Actions 和 PyPI Trusted Publisher 发布，不在仓库或 GitHub Secrets 中保存 PyPI Token。
+`leetcode-local-cli` 使用 GitHub Actions 和 PyPI Trusted Publisher 发布，不在仓库或 GitHub Secrets 中保存 PyPI Token。
 
 ## 首次发布配置
 
@@ -8,9 +8,9 @@
 
 1. 在 GitHub 仓库的 `Settings > Environments` 中创建名为 `pypi` 的 environment；建议把维护者本人设置为 required reviewer，避免标签误推后直接发布。
 2. 在 PyPI 的 `Publishing` 页面添加 pending publisher：
-   - PyPI project name：`aether-lc`
+   - PyPI project name：`leetcode-local-cli`
    - Owner：`Aetherialter`
-   - Repository name：`leetcode-cn-local-cli`
+   - Repository name：`leetcode-local-cli`
    - Workflow name：`release.yml`
    - Environment name：`pypi`
 
@@ -31,7 +31,7 @@ uv build --no-sources
 随后分别对 wheel 和源码包执行隔离 smoke test：
 
 ```shell
-export AETHER_LC_EXPECTED_VERSION="$(uv version --short)"
+export LEETCODE_LOCAL_CLI_EXPECTED_VERSION="$(uv version --short)"
 uv run --isolated --no-project --with dist/*.whl scripts/smoke_test.py
 uv run --isolated --no-project --with dist/*.tar.gz scripts/smoke_test.py
 ```

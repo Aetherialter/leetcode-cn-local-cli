@@ -1,6 +1,6 @@
 import pytest
 
-from aether_lc.problem import (
+from leetcode_local_cli.problem import (
     QuestionIdError,
     normalize_problem_detail,
     parse_question_id,

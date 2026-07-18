@@ -1,6 +1,6 @@
 # 力扣中文站本地化刷题 CLI 工具后续版本规划
 
-本文档是力扣中文站本地化刷题 CLI 工具的 GitHub CLI 版本路线草案，当前仓库名为 `leetcode-cn-local-cli`，用于在正式实现前确认大方向。当前产品定位是轻量、在线优先、单文件工作区的 LeetCode 中文站 CLI 工具。
+本文档是力扣中文站本地化刷题 CLI 工具的 GitHub CLI 版本路线草案，当前仓库名为 `leetcode-local-cli`，用于在正式实现前确认大方向。当前产品定位是轻量、在线优先、单文件工作区的 LeetCode 中文站 CLI 工具。
 
 ## 产品边界
 
@@ -211,10 +211,11 @@
 - 新增 Linux/macOS `scripts/install.sh`。
 - 新增 Windows `scripts/install.ps1`。
 - 未检测到 uv 时，通过 uv 官方 HTTPS 安装器自动引导。
-- 使用 `uv tool install` 安装或替换 `aether-lc`。
+- 使用 `uv tool install` 安装或替换 `leetcode-local-cli`。
 - 新增 `lc --version`，并在安装结束后验证可执行命令。
-- 支持通过 `AETHER_LC_INSTALL_SPEC` 指向本地 wheel，完成发布前端到端验收。
+- 支持通过 `LEETCODE_LOCAL_CLI_INSTALL_SPEC` 指向本地 wheel，完成发布前端到端验收。
 - 让默认工作目录来自 CLI 启动目录，避免全局安装后写入 uv 工具环境。
+- 将旧版 `.aether_lc/session.json` 安全迁移为 `.leetcode_local_cli/session.json`。
 - 在安装器和包结构稳定后接入 PyPI Trusted Publisher。
 
 不做内容：
@@ -241,7 +242,7 @@
 - 使用工作区配置文件识别根目录。
 - 默认不覆盖现有 `solution.py`。
 - 将 Session 移入跨平台用户配置目录。
-- 为旧版 `.aether_lc/session.json` 提供明确迁移策略。
+- 将工作区内的 `.leetcode_local_cli/session.json` 迁移到跨平台用户配置目录。
 
 ### v0.9: 轻量缓存
 

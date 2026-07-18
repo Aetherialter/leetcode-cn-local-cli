@@ -1,8 +1,8 @@
 from typer.testing import CliRunner
 
-from aether_lc import cli
-from aether_lc.doctor import DoctorCheck, DoctorReport, DoctorStatus
-from aether_lc.workspace import SolutionFileInspection, SolutionFileStatus
+from leetcode_local_cli import cli
+from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
+from leetcode_local_cli.workspace import SolutionFileInspection, SolutionFileStatus
 
 
 runner = CliRunner()
@@ -14,7 +14,7 @@ def test_version_option_displays_installed_distribution_version(monkeypatch) -> 
     result = runner.invoke(cli.app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.output.strip() == "aether-lc 1.2.3"
+    assert result.output.strip() == "leetcode-local-cli 1.2.3"
 
 
 def test_help_registers_doctor_command() -> None:

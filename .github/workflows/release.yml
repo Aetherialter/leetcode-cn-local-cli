@@ -40,22 +40,22 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          version="$(uv version --short)"
-          export AETHER_LC_INSTALL_SPEC="$PWD/dist/aether_lc-${version}-py3-none-any.whl"
-          export AETHER_LC_NO_MODIFY_PATH=1
-          export UV_TOOL_DIR="$RUNNER_TEMP/aether-lc-tools"
-          export UV_TOOL_BIN_DIR="$RUNNER_TEMP/aether-lc-bin"
+          wheel_path="$(find "$PWD/dist" -maxdepth 1 -type f -name '*.whl' -print -quit)"
+          test -n "$wheel_path"
+          export LEETCODE_LOCAL_CLI_INSTALL_SPEC="$wheel_path"
+          export LEETCODE_LOCAL_CLI_NO_MODIFY_PATH=1
+          export UV_TOOL_DIR="$RUNNER_TEMP/leetcode-local-cli-tools"
+          export UV_TOOL_BIN_DIR="$RUNNER_TEMP/leetcode-local-cli-bin"
           ./scripts/install.sh
           "$UV_TOOL_BIN_DIR/lc" --help
       - name: Verify Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $Version = uv version --short
-          $env:AETHER_LC_INSTALL_SPEC = (Resolve-Path "dist/aether_lc-$Version-py3-none-any.whl").Path
-          $env:AETHER_LC_NO_MODIFY_PATH = "1"
-          $env:UV_TOOL_DIR = Join-Path $env:RUNNER_TEMP "aether-lc-tools"
-          $env:UV_TOOL_BIN_DIR = Join-Path $env:RUNNER_TEMP "aether-lc-bin"
+          $env:LEETCODE_LOCAL_CLI_INSTALL_SPEC = (Resolve-Path "dist/*.whl").Path
+          $env:LEETCODE_LOCAL_CLI_NO_MODIFY_PATH = "1"
+          $env:UV_TOOL_DIR = Join-Path $env:RUNNER_TEMP "leetcode-local-cli-tools"
+          $env:UV_TOOL_BIN_DIR = Join-Path $env:RUNNER_TEMP "leetcode-local-cli-bin"
           & ./scripts/install.ps1
           & (Join-Path $env:UV_TOOL_BIN_DIR "lc.exe") --help
 
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/aether-lc
+      url: https://pypi.org/p/leetcode-local-cli
     permissions:
       contents: read
       id-token: write
@@ -85,12 +85,12 @@ jobs:
       - name: Smoke test wheel
         shell: bash
         run: |
-          export AETHER_LC_EXPECTED_VERSION="$(uv version --short)"
+          export LEETCODE_LOCAL_CLI_EXPECTED_VERSION="$(uv version --short)"
           uv run --isolated --no-project --with dist/*.whl scripts/smoke_test.py
       - name: Smoke test source distribution
         shell: bash
         run: |
-          export AETHER_LC_EXPECTED_VERSION="$(uv version --short)"
+          export LEETCODE_LOCAL_CLI_EXPECTED_VERSION="$(uv version --short)"
           uv run --isolated --no-project --with dist/*.tar.gz scripts/smoke_test.py
       - name: Publish distributions
         run: uv publish --trusted-publishing always

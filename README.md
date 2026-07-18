@@ -30,28 +30,28 @@
 Linux / macOS 一键安装：
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-cn-local-cli/v0.7.0/scripts/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.0/scripts/install.sh | sh
 ```
 
 Windows PowerShell 一键安装：
 
 ```powershell
-powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-cn-local-cli/v0.7.0/scripts/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.0/scripts/install.ps1 | iex"
 ```
 
-安装器会在缺少 uv 时通过 uv 官方 HTTPS 安装器完成引导，然后使用 `uv tool install` 安装 `aether-lc`，并执行 `lc --version` 验证结果。安装过程不使用 `sudo`，也不会保存 PyPI 或 GitHub 凭据。
+安装器会在缺少 uv 时通过 uv 官方 HTTPS 安装器完成引导，然后使用 `uv tool install` 安装 `leetcode-local-cli`，并执行 `lc --version` 验证结果。安装过程不使用 `sudo`，也不会保存 PyPI 或 GitHub 凭据。
 
 已经安装 uv 时，也可以直接安装：
 
 ```shell
-uv tool install aether-lc
+uv tool install leetcode-local-cli
 ```
 
 升级或卸载：
 
 ```shell
-uv tool upgrade aether-lc
-uv tool uninstall aether-lc
+uv tool upgrade leetcode-local-cli
+uv tool uninstall leetcode-local-cli
 ```
 
 如果安装完成后当前终端仍找不到 `lc`，请重新打开终端，或执行 `uv tool update-shell` 后重载 shell 配置。
@@ -132,14 +132,14 @@ class Solution:
 登录态会保存到：
 
 ```text
-.aether_lc/session.json
+.leetcode_local_cli/session.json
 ```
 
-该文件可能包含敏感 Cookie 信息，已在 `.gitignore` 中忽略。发布前请确认仓库根目录的 `solution.py` 为空，避免把个人解法提交到公开仓库。
+该文件可能包含敏感 Cookie 信息，已在 `.gitignore` 中忽略。v0.7 首次读取登录态时会把旧版 `.aether_lc/session.json` 自动迁移到新目录；迁移过程不会输出 Cookie 值。发布前请确认仓库根目录的 `solution.py` 为空，避免把个人解法提交到公开仓库。
 
 ## 登录态说明
 
-Aether_lc 会把浏览器 Cookie 的本地副本保存到 CLI 启动目录下的 `.aether_lc/session.json`。本地保存的 Cookie 不会延长 LeetCode 登录态有效期；实际是否有效以 LeetCode 服务端验证为准。v0.8 的 `lc init` 会进一步将用户登录态与工作区分离。
+`leetcode-local-cli` 会把浏览器 Cookie 的本地副本保存到 CLI 启动目录下的 `.leetcode_local_cli/session.json`。本地保存的 Cookie 不会延长 LeetCode 登录态有效期；实际是否有效以 LeetCode 服务端验证为准。v0.8 的 `lc init` 会进一步将用户登录态与工作区分离。
 
 如果浏览器 Cookie 刷新，或旧 Cookie 被服务端判定失效，CLI 可能在 `lc status`、`lc profile` 或 `lc submit` 时提示重新执行：
 
@@ -177,12 +177,12 @@ uv run lc test
 uv run ruff check solution.py
 ```
 
-维护者发布流程见 [RELEASING.md](https://github.com/Aetherialter/leetcode-cn-local-cli/blob/main/RELEASING.md)。标签触发的发布工作流会在 Linux、macOS 和 Windows 上验收安装器，分别验证 wheel 与源码包，通过 PyPI Trusted Publisher 上传发行包，并创建 GitHub Release。
+维护者发布流程见 [RELEASING.md](https://github.com/Aetherialter/leetcode-local-cli/blob/main/RELEASING.md)。标签触发的发布工作流会在 Linux、macOS 和 Windows 上验收安装器，分别验证 wheel 与源码包，通过 PyPI Trusted Publisher 上传发行包，并创建 GitHub Release。
 
 ## 项目结构
 
 ```text
-src/aether_lc/
+src/leetcode_local_cli/
   auth.py       Cookie 读取与本地 session
   client.py     LeetCode 中文站 HTTP 客户端
   cli.py        Typer 命令入口

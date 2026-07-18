@@ -1,7 +1,7 @@
 from importlib.metadata import PackageNotFoundError, version
 
 
-PACKAGE_NAME = "aether-lc"
+PACKAGE_NAME = "leetcode-local-cli"
 
 
 def get_version() -> str:

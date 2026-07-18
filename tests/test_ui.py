@@ -2,9 +2,9 @@ from io import StringIO
 
 from rich.console import Console
 
-from aether_lc import ui
-from aether_lc.doctor import DoctorCheck, DoctorReport, DoctorStatus
-from aether_lc.workspace import ProblemMetadata
+from leetcode_local_cli import ui
+from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
+from leetcode_local_cli.workspace import ProblemMetadata
 
 
 def test_render_doctor_report_displays_checks_and_suggestions(monkeypatch) -> None:

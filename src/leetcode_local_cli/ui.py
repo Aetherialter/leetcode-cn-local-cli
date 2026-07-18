@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from aether_lc.doctor import DoctorReport, DoctorStatus
+from leetcode_local_cli.doctor import DoctorReport, DoctorStatus
 
 console = Console(width=shutil.get_terminal_size(fallback=(120, 24)).columns)
 

@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from aether_lc.client import (
+from leetcode_local_cli.client import (
     BASE_URL,
     ClientErrorKind,
     LeetCodeClient,

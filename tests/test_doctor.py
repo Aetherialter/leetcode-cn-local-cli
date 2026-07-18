@@ -3,8 +3,8 @@ import subprocess
 
 import pytest
 
-from aether_lc.client import ClientErrorKind, ClientResult
-from aether_lc.doctor import (
+from leetcode_local_cli.client import ClientErrorKind, ClientResult
+from leetcode_local_cli.doctor import (
     DoctorCheck,
     DoctorReport,
     DoctorStatus,
@@ -12,7 +12,7 @@ from aether_lc.doctor import (
     diagnose_session,
     diagnose_solution,
 )
-from aether_lc.workspace import ProblemMetadata, build_solution_content
+from leetcode_local_cli.workspace import ProblemMetadata, build_solution_content
 
 
 @pytest.mark.parametrize(
@@ -172,7 +172,7 @@ def test_diagnose_solution_reports_runtime_timeout(tmp_path, monkeypatch) -> Non
     def raise_timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired("python", 10)
 
-    monkeypatch.setattr("aether_lc.doctor.run_solution_file", raise_timeout)
+    monkeypatch.setattr("leetcode_local_cli.doctor.run_solution_file", raise_timeout)
 
     result = diagnose_solution(solution_file)
 

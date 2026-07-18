@@ -4,12 +4,26 @@ import stat
 
 import pytest
 
-from aether_lc import auth
-from aether_lc.auth import SessionFileStatus
+from leetcode_local_cli import auth
+from leetcode_local_cli.auth import SessionFileStatus
 
 
 def _write_json(path, data) -> None:
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def _set_default_session_paths(tmp_path, monkeypatch):
+    session_dir = tmp_path / ".leetcode_local_cli"
+    legacy_session_dir = tmp_path / ".aether_lc"
+    monkeypatch.setattr(auth, "SESSION_DIR", session_dir)
+    monkeypatch.setattr(auth, "SESSION_FILE", session_dir / "session.json")
+    monkeypatch.setattr(auth, "LEGACY_SESSION_DIR", legacy_session_dir)
+    monkeypatch.setattr(
+        auth,
+        "LEGACY_SESSION_FILE",
+        legacy_session_dir / "session.json",
+    )
+    return session_dir, legacy_session_dir
 
 
 def test_inspect_session_file_returns_missing_when_file_does_not_exist(
@@ -150,8 +164,9 @@ def test_load_session_preserves_existing_success_and_failure_contract(
     tmp_path,
     monkeypatch,
 ) -> None:
-    session_file = tmp_path / "session.json"
-    monkeypatch.setattr(auth, "SESSION_FILE", session_file)
+    session_dir, _ = _set_default_session_paths(tmp_path, monkeypatch)
+    session_dir.mkdir()
+    session_file = session_dir / "session.json"
     session_data = {"cookies": {"LEETCODE_SESSION": "session-value"}}
 
     _write_json(session_file, session_data)
@@ -162,6 +177,57 @@ def test_load_session_preserves_existing_success_and_failure_contract(
 
     session_file.unlink()
     assert auth.load_session() is None
+
+
+def test_load_session_migrates_legacy_directory_without_exposing_values(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session_dir, legacy_session_dir = _set_default_session_paths(
+        tmp_path,
+        monkeypatch,
+    )
+    legacy_session_dir.mkdir()
+    legacy_session_file = legacy_session_dir / "session.json"
+    session_data = {
+        "cookies": {
+            "LEETCODE_SESSION": "private-session-value",
+            "csrftoken": "private-csrf-value",
+        }
+    }
+    _write_json(legacy_session_file, session_data)
+
+    assert auth.load_session() == session_data
+
+    session_file = session_dir / "session.json"
+    assert json.loads(session_file.read_text(encoding="utf-8")) == session_data
+    assert not legacy_session_file.exists()
+    assert not legacy_session_dir.exists()
+    if os.name != "nt":
+        assert stat.S_IMODE(session_dir.stat().st_mode) == 0o700
+        assert stat.S_IMODE(session_file.stat().st_mode) == 0o600
+
+
+def test_new_session_takes_precedence_over_legacy_session(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session_dir, legacy_session_dir = _set_default_session_paths(
+        tmp_path,
+        monkeypatch,
+    )
+    session_dir.mkdir()
+    legacy_session_dir.mkdir()
+    current_data = {"source": "current"}
+    legacy_data = {"source": "legacy"}
+    _write_json(session_dir / "session.json", current_data)
+    _write_json(legacy_session_dir / "session.json", legacy_data)
+
+    assert auth.load_session() == current_data
+    assert (
+        json.loads((legacy_session_dir / "session.json").read_text(encoding="utf-8"))
+        == legacy_data
+    )
 
 
 def test_save_session_writes_atomically_with_private_permissions(tmp_path) -> None:
@@ -181,6 +247,23 @@ def test_save_session_writes_atomically_with_private_permissions(tmp_path) -> No
         assert stat.S_IMODE(session_file.stat().st_mode) == 0o600
 
 
+def test_save_default_session_uses_private_canonical_directory(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session_dir, _ = _set_default_session_paths(tmp_path, monkeypatch)
+    session_data = {"cookies": {"LEETCODE_SESSION": "session-value"}}
+
+    auth.save_session(session_data)
+
+    assert (
+        json.loads((session_dir / "session.json").read_text(encoding="utf-8"))
+        == session_data
+    )
+    if os.name != "nt":
+        assert stat.S_IMODE(session_dir.stat().st_mode) == 0o700
+
+
 def test_save_session_cleans_temporary_file_after_serialization_error(
     tmp_path,
 ) -> None:
@@ -197,7 +280,14 @@ def test_load_session_raises_clear_error_for_unreadable_path(
     tmp_path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(auth, "SESSION_DIR", tmp_path)
     monkeypatch.setattr(auth, "SESSION_FILE", tmp_path)
+    monkeypatch.setattr(auth, "LEGACY_SESSION_DIR", tmp_path / "legacy")
+    monkeypatch.setattr(
+        auth,
+        "LEGACY_SESSION_FILE",
+        tmp_path / "legacy" / "session.json",
+    )
 
     with pytest.raises(auth.SessionFileError, match="无法读取 Session 文件"):
         auth.load_session()

@@ -33,7 +33,7 @@ def _write_fake_lc(path: Path) -> None:
         path,
         """#!/bin/sh
 [ "$1" = "--version" ] || exit 2
-printf '%s\\n' 'aether-lc 9.9.9'
+printf '%s\\n' 'leetcode-local-cli 9.9.9'
 """,
     )
 
@@ -49,7 +49,7 @@ def _installer_environment(tmp_path: Path) -> tuple[dict[str, str], Path, Path]:
     environment = os.environ.copy()
     environment.update(
         {
-            "AETHER_LC_INSTALL_SPEC": str(tmp_path / "aether_lc.whl"),
+            "LEETCODE_LOCAL_CLI_INSTALL_SPEC": str(tmp_path / "leetcode_local_cli.whl"),
             "FAKE_TOOL_BIN": str(tool_bin),
             "FAKE_UV_LOG": str(log_file),
             "HOME": str(tmp_path / "home"),
@@ -85,11 +85,11 @@ def test_shell_installer_uses_existing_uv_and_verifies_lc(tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     calls = log_file.read_text(encoding="utf-8").splitlines()
     assert calls == [
-        f"tool install --force {tmp_path / 'aether_lc.whl'}",
+        f"tool install --force {tmp_path / 'leetcode_local_cli.whl'}",
         "tool update-shell",
         "tool dir --bin",
     ]
-    assert "安装成功：aether-lc 9.9.9" in result.stdout
+    assert "安装成功：leetcode-local-cli 9.9.9" in result.stdout
 
 
 def test_shell_installer_bootstraps_uv_when_missing(tmp_path) -> None:
@@ -143,7 +143,7 @@ cp "$FAKE_UV_INSTALLER" "$output"
 
 def test_shell_installer_rejects_non_https_uv_installer(tmp_path) -> None:
     environment, _, _ = _installer_environment(tmp_path)
-    environment["AETHER_LC_UV_INSTALL_URL"] = "http://example.com/install.sh"
+    environment["LEETCODE_LOCAL_CLI_UV_INSTALL_URL"] = "http://example.com/install.sh"
 
     result = subprocess.run(
         [str(SHELL_INSTALLER)],
@@ -160,7 +160,9 @@ def test_shell_installer_rejects_non_https_uv_installer(tmp_path) -> None:
 def test_shell_installer_rejects_non_https_package_source(tmp_path) -> None:
     environment, fake_bin, _ = _installer_environment(tmp_path)
     _write_fake_uv(fake_bin / "uv")
-    environment["AETHER_LC_INSTALL_SPEC"] = "http://example.com/aether-lc.whl"
+    environment["LEETCODE_LOCAL_CLI_INSTALL_SPEC"] = (
+        "http://example.com/leetcode-local-cli.whl"
+    )
 
     result = subprocess.run(
         [str(SHELL_INSTALLER)],
@@ -177,8 +179,8 @@ def test_shell_installer_rejects_non_https_package_source(tmp_path) -> None:
 def test_shell_installer_rejects_non_https_url_inside_package_spec(tmp_path) -> None:
     environment, fake_bin, _ = _installer_environment(tmp_path)
     _write_fake_uv(fake_bin / "uv")
-    environment["AETHER_LC_INSTALL_SPEC"] = (
-        "aether-lc @ git+http://example.com/aether-lc.git"
+    environment["LEETCODE_LOCAL_CLI_INSTALL_SPEC"] = (
+        "leetcode-local-cli @ git+http://example.com/leetcode-local-cli.git"
     )
 
     result = subprocess.run(
@@ -198,7 +200,7 @@ def test_shell_installer_propagates_uv_install_failure(tmp_path) -> None:
     _write_executable(
         fake_bin / "uv",
         """#!/bin/sh
-if [ "$*" = "tool install --force $AETHER_LC_INSTALL_SPEC" ]; then
+if [ "$*" = "tool install --force $LEETCODE_LOCAL_CLI_INSTALL_SPEC" ]; then
     exit 17
 fi
 exit 2
@@ -221,7 +223,7 @@ def test_powershell_installer_declares_same_install_contract() -> None:
     content = POWERSHELL_INSTALLER.read_text(encoding="utf-8")
 
     assert "https://astral.sh/uv/install.ps1" in content
-    assert "AETHER_LC_INSTALL_SPEC" in content
+    assert "LEETCODE_LOCAL_CLI_INSTALL_SPEC" in content
     assert "tool install --force" in content
     assert "tool update-shell" in content
     assert "--version" in content

@@ -5,7 +5,7 @@ import os
 import subprocess
 
 
-PACKAGE_NAME = "aether-lc"
+PACKAGE_NAME = "leetcode-local-cli"
 
 
 def run_lc(*arguments: str) -> subprocess.CompletedProcess[str]:
@@ -18,7 +18,7 @@ def run_lc(*arguments: str) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
-    expected_version = os.environ["AETHER_LC_EXPECTED_VERSION"]
+    expected_version = os.environ["LEETCODE_LOCAL_CLI_EXPECTED_VERSION"]
     installed_version = version(PACKAGE_NAME)
     if installed_version != expected_version:
         raise SystemExit(

@@ -1,22 +1,22 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$UvInstallUrl = if ($env:AETHER_LC_UV_INSTALL_URL) {
-    $env:AETHER_LC_UV_INSTALL_URL
+$UvInstallUrl = if ($env:LEETCODE_LOCAL_CLI_UV_INSTALL_URL) {
+    $env:LEETCODE_LOCAL_CLI_UV_INSTALL_URL
 } else {
     "https://astral.sh/uv/install.ps1"
 }
-$InstallSpec = if ($env:AETHER_LC_INSTALL_SPEC) {
-    $env:AETHER_LC_INSTALL_SPEC
+$InstallSpec = if ($env:LEETCODE_LOCAL_CLI_INSTALL_SPEC) {
+    $env:LEETCODE_LOCAL_CLI_INSTALL_SPEC
 } else {
-    "aether-lc"
+    "leetcode-local-cli"
 }
 if ($InstallSpec.IndexOf("http://", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
     throw "包安装地址必须使用 HTTPS：$InstallSpec"
 }
 
 function Write-Info([string]$Message) {
-    Write-Host "[aether-lc] $Message"
+    Write-Host "[leetcode-local-cli] $Message"
 }
 
 function Find-Uv {
@@ -51,7 +51,7 @@ if (-not $UvPath) {
 
     $InstallerPath = Join-Path (
         [System.IO.Path]::GetTempPath()
-    ) "aether-lc-install-uv-$([Guid]::NewGuid()).ps1"
+    ) "leetcode-local-cli-install-uv-$([Guid]::NewGuid()).ps1"
     try {
         Write-Info "未检测到 uv，正在下载安装官方 uv..."
         Invoke-WebRequest -UseBasicParsing -Uri $UvInstallUrl -OutFile $InstallerPath
@@ -73,7 +73,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "uv tool install 执行失败，退出码：$LASTEXITCODE"
 }
 
-if ($env:AETHER_LC_NO_MODIFY_PATH -ne "1") {
+if ($env:LEETCODE_LOCAL_CLI_NO_MODIFY_PATH -ne "1") {
     & $UvPath tool update-shell *> $null
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "无法自动更新 PATH；请执行 '$UvPath tool update-shell'"

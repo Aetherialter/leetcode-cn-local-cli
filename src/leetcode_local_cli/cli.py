@@ -2,14 +2,14 @@ from typing import Annotated
 
 from typer import Exit, Option, Typer, echo
 
-from aether_lc.auth import (
+from leetcode_local_cli.auth import (
     SessionFileError,
     get_cookies_from_browser,
     get_cookies_from_input,
     save_session,
 )
-from aether_lc.client import ClientErrorKind, LeetCodeClient
-from aether_lc.ui import (
+from leetcode_local_cli.client import ClientErrorKind, LeetCodeClient
+from leetcode_local_cli.ui import (
     loading,
     render_doctor_report,
     render_submission_result,
@@ -20,7 +20,7 @@ from aether_lc.ui import (
     render_problem_detail,
     render_problem_list,
 )
-from aether_lc.service import (
+from leetcode_local_cli.service import (
     client_error_message,
     get_account_profile,
     get_doctor_report,
@@ -29,21 +29,21 @@ from aether_lc.service import (
     get_user_status,
     submit_current_solution,
 )
-from aether_lc.workspace import (
+from leetcode_local_cli.workspace import (
     ProblemMetadata,
     SolutionFileStatus,
     inspect_solution_file,
     run_solution_file,
     write_solution_file,
 )
-from aether_lc.version import get_version
+from leetcode_local_cli.version import PACKAGE_NAME, get_version
 
 app = Typer(help="力扣中文站本地化刷题 CLI 工具", no_args_is_help=True)
 
 
 def _version_callback(value: bool) -> None:
     if value:
-        echo(f"aether-lc {get_version()}")
+        echo(f"{PACKAGE_NAME} {get_version()}")
         raise Exit()
 
 

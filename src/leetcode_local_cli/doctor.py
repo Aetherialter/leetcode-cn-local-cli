@@ -3,9 +3,9 @@ from enum import Enum
 from pathlib import Path
 import subprocess
 
-from aether_lc.auth import SessionFileStatus, inspect_session_file
-from aether_lc.client import ClientErrorKind, ClientResult
-from aether_lc.workspace import (
+from leetcode_local_cli.auth import SessionFileStatus, inspect_session_file
+from leetcode_local_cli.client import ClientErrorKind, ClientResult
+from leetcode_local_cli.workspace import (
     SolutionFileStatus,
     inspect_solution_file,
     run_solution_file,

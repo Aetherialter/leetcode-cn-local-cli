@@ -1,7 +1,7 @@
 import pytest
 
-from aether_lc import workspace
-from aether_lc.workspace import (
+from leetcode_local_cli import workspace
+from leetcode_local_cli.workspace import (
     ProblemMetadata,
     SolutionFileStatus,
     WorkspaceError,

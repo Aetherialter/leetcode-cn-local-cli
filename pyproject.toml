@@ -1,5 +1,5 @@
 [project]
-name = "aether-lc"
+name = "leetcode-local-cli"
 version = "0.7.0"
 description = "Local coding workflow CLI for LeetCode CN."
 readme = "README.md"
@@ -25,16 +25,19 @@ dependencies = [
 ]
 
 [project.scripts]
-lc = "aether_lc.cli:app"
+lc = "leetcode_local_cli.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/Aetherialter/leetcode-cn-local-cli"
-Issues = "https://github.com/Aetherialter/leetcode-cn-local-cli/issues"
-Repository = "https://github.com/Aetherialter/leetcode-cn-local-cli"
+Homepage = "https://github.com/Aetherialter/leetcode-local-cli"
+Issues = "https://github.com/Aetherialter/leetcode-local-cli/issues"
+Repository = "https://github.com/Aetherialter/leetcode-local-cli"
 
 [build-system]
 requires = ["uv_build>=0.11.7,<0.12.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "leetcode_local_cli"
 
 [dependency-groups]
 dev = [
