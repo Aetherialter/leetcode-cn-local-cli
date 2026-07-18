@@ -2,10 +2,16 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SHELL_INSTALLER = PROJECT_ROOT / "scripts" / "install.sh"
 POWERSHELL_INSTALLER = PROJECT_ROOT / "scripts" / "install.ps1"
+REQUIRES_POSIX_SHELL = pytest.mark.skipif(
+    os.name == "nt",
+    reason="POSIX shell installer tests run on Linux and macOS",
+)
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -59,6 +65,7 @@ def _installer_environment(tmp_path: Path) -> tuple[dict[str, str], Path, Path]:
     return environment, fake_bin, log_file
 
 
+@REQUIRES_POSIX_SHELL
 def test_shell_installer_has_valid_syntax() -> None:
     result = subprocess.run(
         ["sh", "-n", str(SHELL_INSTALLER)],
@@ -70,6 +77,7 @@ def test_shell_installer_has_valid_syntax() -> None:
     assert result.returncode == 0, result.stderr
 
 
+@REQUIRES_POSIX_SHELL
 def test_shell_installer_uses_existing_uv_and_verifies_lc(tmp_path) -> None:
     environment, fake_bin, log_file = _installer_environment(tmp_path)
     _write_fake_uv(fake_bin / "uv")
@@ -92,6 +100,7 @@ def test_shell_installer_uses_existing_uv_and_verifies_lc(tmp_path) -> None:
     assert "安装成功：leetcode-local-cli 9.9.9" in result.stdout
 
 
+@REQUIRES_POSIX_SHELL
 def test_shell_installer_bootstraps_uv_when_missing(tmp_path) -> None:
     environment, fake_bin, log_file = _installer_environment(tmp_path)
     fake_uv_template = tmp_path / "fake-uv"
@@ -141,6 +150,7 @@ cp "$FAKE_UV_INSTALLER" "$output"
     assert "tool install --force" in log_file.read_text(encoding="utf-8")
 
 
+@REQUIRES_POSIX_SHELL
 def test_shell_installer_rejects_non_https_uv_installer(tmp_path) -> None:
     environment, _, _ = _installer_environment(tmp_path)
     environment["LEETCODE_LOCAL_CLI_UV_INSTALL_URL"] = "http://example.com/install.sh"
@@ -157,6 +167,7 @@ def test_shell_installer_rejects_non_https_uv_installer(tmp_path) -> None:
     assert "必须使用 HTTPS" in result.stderr
 
 
+@REQUIRES_POSIX_SHELL
 def test_shell_installer_rejects_non_https_package_source(tmp_path) -> None:
     environment, fake_bin, _ = _installer_environment(tmp_path)
     _write_fake_uv(fake_bin / "uv")
@@ -176,6 +187,7 @@ def test_shell_installer_rejects_non_https_package_source(tmp_path) -> None:
     assert "必须使用 HTTPS" in result.stderr
 
 
+@REQUIRES_POSIX_SHELL
 def test_shell_installer_rejects_non_https_url_inside_package_spec(tmp_path) -> None:
     environment, fake_bin, _ = _installer_environment(tmp_path)
     _write_fake_uv(fake_bin / "uv")
@@ -195,6 +207,7 @@ def test_shell_installer_rejects_non_https_url_inside_package_spec(tmp_path) -> 
     assert "必须使用 HTTPS" in result.stderr
 
 
+@REQUIRES_POSIX_SHELL
 def test_shell_installer_propagates_uv_install_failure(tmp_path) -> None:
     environment, fake_bin, _ = _installer_environment(tmp_path)
     _write_executable(
