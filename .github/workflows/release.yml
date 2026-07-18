@@ -102,13 +102,38 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Create release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          release_notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+          release_title="$GITHUB_REF_NAME"
+          notes_file=""
+
+          if [[ -f "$release_notes" ]]; then
+            release_title="$(head -n 1 "$release_notes")"
+            notes_file="$RUNNER_TEMP/release-notes.md"
+            tail -n +3 "$release_notes" > "$notes_file"
+          fi
+
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "GitHub release $GITHUB_REF_NAME already exists"
+            if [[ -n "$notes_file" ]]; then
+              gh release edit "$GITHUB_REF_NAME" \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "$release_title" \
+                --notes-file "$notes_file"
+            else
+              echo "GitHub release $GITHUB_REF_NAME already exists"
+            fi
+          elif [[ -n "$notes_file" ]]; then
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "$release_title" \
+              --notes-file "$notes_file"
           else
             gh release create "$GITHUB_REF_NAME" \
               --repo "$GITHUB_REPOSITORY" \
