@@ -1,0 +1,118 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  verify:
+    name: Verify on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.28"
+          python-version: "3.12"
+      - name: Install development environment
+        run: uv sync --locked --all-groups
+      - name: Check formatting
+        run: uv run ruff format --check src tests scripts
+      - name: Run lint
+        run: uv run ruff check src tests scripts pyproject.toml
+      - name: Run type checking
+        run: uv run pyright src tests scripts
+      - name: Run tests
+        run: uv run pytest
+      - name: Build distributions
+        run: uv build --no-sources
+      - name: Verify Unix installer
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          version="$(uv version --short)"
+          export AETHER_LC_INSTALL_SPEC="$PWD/dist/aether_lc-${version}-py3-none-any.whl"
+          export AETHER_LC_NO_MODIFY_PATH=1
+          export UV_TOOL_DIR="$RUNNER_TEMP/aether-lc-tools"
+          export UV_TOOL_BIN_DIR="$RUNNER_TEMP/aether-lc-bin"
+          ./scripts/install.sh
+          "$UV_TOOL_BIN_DIR/lc" --help
+      - name: Verify Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $Version = uv version --short
+          $env:AETHER_LC_INSTALL_SPEC = (Resolve-Path "dist/aether_lc-$Version-py3-none-any.whl").Path
+          $env:AETHER_LC_NO_MODIFY_PATH = "1"
+          $env:UV_TOOL_DIR = Join-Path $env:RUNNER_TEMP "aether-lc-tools"
+          $env:UV_TOOL_BIN_DIR = Join-Path $env:RUNNER_TEMP "aether-lc-bin"
+          & ./scripts/install.ps1
+          & (Join-Path $env:UV_TOOL_BIN_DIR "lc.exe") --help
+
+  publish:
+    name: Publish to PyPI
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/aether-lc
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.28"
+          python-version: "3.12"
+      - name: Verify release tag
+        shell: bash
+        run: test "v$(uv version --short)" = "$GITHUB_REF_NAME"
+      - name: Build distributions
+        run: uv build --no-sources
+      - name: Smoke test wheel
+        shell: bash
+        run: |
+          export AETHER_LC_EXPECTED_VERSION="$(uv version --short)"
+          uv run --isolated --no-project --with dist/*.whl scripts/smoke_test.py
+      - name: Smoke test source distribution
+        shell: bash
+        run: |
+          export AETHER_LC_EXPECTED_VERSION="$(uv version --short)"
+          uv run --isolated --no-project --with dist/*.tar.gz scripts/smoke_test.py
+      - name: Publish distributions
+        run: uv publish --trusted-publishing always
+
+  release:
+    name: Create GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub release $GITHUB_REF_NAME already exists"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi

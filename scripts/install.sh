@@ -7,7 +7,7 @@ INSTALL_SPEC=${AETHER_LC_INSTALL_SPEC:-aether-lc}
 TEMP_DIR=""
 
 case "$INSTALL_SPEC" in
-    http://*)
+    *http://*)
         printf '%s\n' "[aether-lc] 错误：包安装地址必须使用 HTTPS：$INSTALL_SPEC" >&2
         exit 1
         ;;

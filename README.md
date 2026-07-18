@@ -2,7 +2,7 @@
 
 一个面向 LeetCode 中文站的轻量本地刷题 CLI。它复用浏览器登录态，在线获取题目，在当前工作目录生成单文件 `solution.py`，并支持本地测试和远程提交。
 
-当前版本：`v0.6.0`
+当前版本：`v0.7.0`
 
 ## 核心能力
 
@@ -27,49 +27,45 @@
 
 ## 安装
 
-当前稳定版仍使用源码开发方式：
+Linux / macOS 一键安装：
 
-```shell
-git clone https://github.com/Aetherialter/leetcode-cn-local-cli.git
-cd leetcode-cn-local-cli
-uv sync
-uv run lc --help
+```bash
+curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-cn-local-cli/v0.7.0/scripts/install.sh | sh
 ```
 
-v0.7 正在加入基于 `uv tool install` 的全局安装器。安装器会在缺少 uv 时调用 uv 官方 HTTPS 安装程序，并在安装后通过 `lc --version` 验证结果。正式包发布前，可使用本地 wheel 验证：
-
-```shell
-uv build
-AETHER_LC_INSTALL_SPEC="$PWD/dist/aether_lc-0.6.0-py3-none-any.whl" \
-  AETHER_LC_NO_MODIFY_PATH=1 \
-  UV_TOOL_DIR=/tmp/aether-lc-tools \
-  UV_TOOL_BIN_DIR=/tmp/aether-lc-bin \
-  ./scripts/install.sh
-```
-
-Windows PowerShell：
+Windows PowerShell 一键安装：
 
 ```powershell
-uv build
-$env:AETHER_LC_INSTALL_SPEC = "$PWD\dist\aether_lc-0.6.0-py3-none-any.whl"
-$env:AETHER_LC_NO_MODIFY_PATH = "1"
-$env:UV_TOOL_DIR = "$env:TEMP\aether-lc-tools"
-$env:UV_TOOL_BIN_DIR = "$env:TEMP\aether-lc-bin"
-.\scripts\install.ps1
+powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-cn-local-cli/v0.7.0/scripts/install.ps1 | iex"
 ```
 
-以上额外环境变量仅用于隔离开发验收；正常的一键安装会使用用户级 uv 工具目录并自动调用 `uv tool update-shell`。
+安装器会在缺少 uv 时通过 uv 官方 HTTPS 安装器完成引导，然后使用 `uv tool install` 安装 `aether-lc`，并执行 `lc --version` 验证结果。安装过程不使用 `sudo`，也不会保存 PyPI 或 GitHub 凭据。
+
+已经安装 uv 时，也可以直接安装：
+
+```shell
+uv tool install aether-lc
+```
+
+升级或卸载：
+
+```shell
+uv tool upgrade aether-lc
+uv tool uninstall aether-lc
+```
+
+如果安装完成后当前终端仍找不到 `lc`，请重新打开终端，或执行 `uv tool update-shell` 后重载 shell 配置。
 
 ## 基本工作流
 
 ```shell
-uv run lc login
-uv run lc doctor
-uv run lc status
-uv run lc get 1
-uv run lc solve 1
-uv run lc test
-uv run lc submit
+lc login
+lc doctor
+lc status
+lc get 1
+lc solve 1
+lc test
+lc submit
 ```
 
 常用命令：
@@ -148,13 +144,13 @@ Aether_lc 会把浏览器 Cookie 的本地副本保存到 CLI 启动目录下的
 如果浏览器 Cookie 刷新，或旧 Cookie 被服务端判定失效，CLI 可能在 `lc status`、`lc profile` 或 `lc submit` 时提示重新执行：
 
 ```shell
-uv run lc login
+lc login
 ```
 
 `lc show` 和 `lc get` 访问公开题目数据，可能在登录态失效时仍然可用。遇到登录态、网络或本地解题文件问题时，可以执行：
 
 ```shell
-uv run lc doctor
+lc doctor
 ```
 
 诊断输出只包含用户名、Cookie 缺失项等安全元数据，不会展示 Cookie 值。
@@ -162,10 +158,11 @@ uv run lc doctor
 ## 开发与验证
 
 ```shell
-uv run ruff format src tests
-uv run ruff check src pyproject.toml tests
-uv run pyright src tests
+uv run ruff format src tests scripts
+uv run ruff check src tests scripts pyproject.toml
+uv run pyright src tests scripts
 uv run pytest
+uv build --no-sources
 ```
 
 发布前常用手动检查：
@@ -179,6 +176,8 @@ uv run lc solve 1
 uv run lc test
 uv run ruff check solution.py
 ```
+
+维护者发布流程见 [RELEASING.md](https://github.com/Aetherialter/leetcode-cn-local-cli/blob/main/RELEASING.md)。标签触发的发布工作流会在 Linux、macOS 和 Windows 上验收安装器，分别验证 wheel 与源码包，通过 PyPI Trusted Publisher 上传发行包，并创建 GitHub Release。
 
 ## 项目结构
 
@@ -196,6 +195,9 @@ src/aether_lc/
 scripts/
   install.sh    Linux/macOS 一键安装器
   install.ps1   Windows PowerShell 一键安装器
+  smoke_test.py wheel 与源码包发布验收
+.github/workflows/
+  release.yml   跨平台验证、PyPI 发布与 GitHub Release
 tests/
   test_auth.py
   test_cli.py
@@ -216,7 +218,7 @@ tests/
 - `v0.5.6`: 收束 `lc show` 参数校验，避免非法分页参数触发远端接口异常提示。
 - `v0.5.7`: 修复非 Windows 环境导入 `os.startfile` 导致 CLI 无法启动的问题。
 - `v0.6.0`: 新增 `lc doctor`，完善客户端边界校验、本地文件诊断、错误提示和提交目标展示。
-- `v0.7`: uv 全局工具安装与跨平台引导脚本。
+- `v0.7.0`: uv 全局工具安装、跨平台引导脚本和 PyPI Trusted Publisher 发布流程。
 - `v0.8`: `lc init` 与正式工作区管理。
 - `v0.9`: 轻量缓存。
 - `v0.10`: 样例提取原型。

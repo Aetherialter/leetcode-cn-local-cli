@@ -11,7 +11,7 @@ $InstallSpec = if ($env:AETHER_LC_INSTALL_SPEC) {
 } else {
     "aether-lc"
 }
-if ($InstallSpec.StartsWith("http://", [System.StringComparison]::OrdinalIgnoreCase)) {
+if ($InstallSpec.IndexOf("http://", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
     throw "包安装地址必须使用 HTTPS：$InstallSpec"
 }
 

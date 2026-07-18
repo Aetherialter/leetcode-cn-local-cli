@@ -174,6 +174,25 @@ def test_shell_installer_rejects_non_https_package_source(tmp_path) -> None:
     assert "必须使用 HTTPS" in result.stderr
 
 
+def test_shell_installer_rejects_non_https_url_inside_package_spec(tmp_path) -> None:
+    environment, fake_bin, _ = _installer_environment(tmp_path)
+    _write_fake_uv(fake_bin / "uv")
+    environment["AETHER_LC_INSTALL_SPEC"] = (
+        "aether-lc @ git+http://example.com/aether-lc.git"
+    )
+
+    result = subprocess.run(
+        [str(SHELL_INSTALLER)],
+        capture_output=True,
+        text=True,
+        env=environment,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "必须使用 HTTPS" in result.stderr
+
+
 def test_shell_installer_propagates_uv_install_failure(tmp_path) -> None:
     environment, fake_bin, _ = _installer_environment(tmp_path)
     _write_executable(
@@ -206,3 +225,4 @@ def test_powershell_installer_declares_same_install_contract() -> None:
     assert "tool install --force" in content
     assert "tool update-shell" in content
     assert "--version" in content
+    assert 'IndexOf("http://"' in content
