@@ -1,3 +1,7 @@
+import os
+import subprocess
+import sys
+
 from typer.testing import CliRunner
 
 from leetcode_local_cli import cli
@@ -6,6 +10,21 @@ from leetcode_local_cli.workspace import SolutionFileInspection, SolutionFileSta
 
 
 runner = CliRunner()
+
+
+def test_module_entrypoint_emits_utf8_when_initial_encoding_is_cp1252() -> None:
+    environment = os.environ.copy()
+    environment["PYTHONIOENCODING"] = "cp1252"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "leetcode_local_cli", "--help"],
+        capture_output=True,
+        check=False,
+        env=environment,
+    )
+
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    assert "力扣中文站" in result.stdout.decode("utf-8")
 
 
 def test_version_option_displays_installed_distribution_version(monkeypatch) -> None:

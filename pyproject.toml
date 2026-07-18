@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lc = "leetcode_local_cli.cli:app"
+lc = "leetcode_local_cli.cli:run"
 
 [project.urls]
 Homepage = "https://github.com/Aetherialter/leetcode-local-cli"

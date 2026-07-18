@@ -1,3 +1,4 @@
+import sys
 from typing import Annotated
 
 from typer import Exit, Option, Typer, echo
@@ -39,6 +40,20 @@ from leetcode_local_cli.workspace import (
 from leetcode_local_cli.version import PACKAGE_NAME, get_version
 
 app = Typer(help="力扣中文站本地化刷题 CLI 工具", no_args_is_help=True)
+
+
+def _configure_utf8_output() -> None:
+    """Keep localized CLI output writable when Windows redirects the streams."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
+def run() -> None:
+    """Run the command-line application with deterministic UTF-8 output."""
+    _configure_utf8_output()
+    app()
 
 
 def _version_callback(value: bool) -> None:
@@ -199,4 +214,4 @@ def submit() -> None:
 
 
 if __name__ == "__main__":
-    app()
+    run()
