@@ -1,6 +1,9 @@
+import os
 from pathlib import Path
 import subprocess
 import tomllib
+
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +32,10 @@ def test_release_workflow_uses_versioned_title_and_notes() -> None:
     assert '--notes-file "$notes_file"' in workflow
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="release creation runs with Bash on an Ubuntu GitHub Actions runner",
+)
 def test_release_creation_script_has_valid_bash_syntax() -> None:
     lines = RELEASE_WORKFLOW.read_text(encoding="utf-8").splitlines()
     step_index = lines.index("      - name: Create release")
