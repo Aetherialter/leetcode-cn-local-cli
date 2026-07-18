@@ -65,6 +65,17 @@ def test_get_user_status_exits_on_client_error(monkeypatch) -> None:
         service.get_user_status()
 
 
+@pytest.mark.parametrize(
+    "error_kind",
+    [ClientErrorKind.UNAUTHORIZED, ClientErrorKind.MISSING_CSRF],
+)
+def test_authentication_error_messages_use_installed_cli_command(error_kind) -> None:
+    message = service.client_error_message(error_kind)
+
+    assert "lc login" in message
+    assert "uv run" not in message
+
+
 def test_get_problem_summaries_exits_on_invalid_response(monkeypatch) -> None:
     class InvalidProblemListClient(FakeClient):
         def problem_list(self, limit: int = 50, skip: int = 0) -> ClientResult:

@@ -86,8 +86,7 @@ def test_diagnose_session_reports_invalid_session_file(
 
     assert result.status is DoctorStatus.FAIL
     assert result.message == expected_message
-    assert result.suggestion is not None
-    assert "uv run lc login" in result.suggestion
+    assert result.suggestion == "请执行 lc login 重新生成登录态"
 
 
 def test_diagnose_session_reports_missing_file(tmp_path) -> None:
@@ -95,8 +94,7 @@ def test_diagnose_session_reports_missing_file(tmp_path) -> None:
 
     assert result.status is DoctorStatus.FAIL
     assert result.message == "未找到 Session 文件"
-    assert result.suggestion is not None
-    assert "uv run lc login" in result.suggestion
+    assert result.suggestion == "请执行 lc login 创建登录态"
 
 
 def test_diagnose_session_reports_read_error(tmp_path) -> None:
@@ -119,8 +117,7 @@ def test_diagnose_session_reports_missing_cookie_names(tmp_path) -> None:
 
     assert result.status is DoctorStatus.FAIL
     assert result.message == "缺少或无效的 Cookie：LEETCODE_SESSION、csrftoken"
-    assert result.suggestion is not None
-    assert "uv run lc login" in result.suggestion
+    assert result.suggestion == "请执行 lc login 刷新 Cookie"
 
 
 def test_diagnose_solution_reports_ready_workspace(tmp_path) -> None:
@@ -147,8 +144,7 @@ def test_diagnose_solution_reports_runtime_failure(tmp_path) -> None:
 
     assert result.status is DoctorStatus.FAIL
     assert "本地运行失败" in result.message
-    assert result.suggestion is not None
-    assert "lc test" in result.suggestion
+    assert result.suggestion == "请执行 lc test 定位本地测试错误"
 
 
 def test_diagnose_solution_runs_valid_file_without_submission_markers(tmp_path) -> None:
@@ -208,6 +204,7 @@ def test_diagnose_solution_reports_missing_and_read_error(tmp_path) -> None:
     read_error = diagnose_solution(tmp_path)
 
     assert missing.status is DoctorStatus.WARNING
+    assert missing.suggestion == "请执行 lc solve <题号> 创建解题文件"
     assert read_error.status is DoctorStatus.FAIL
 
 
@@ -238,8 +235,7 @@ def test_diagnose_remote_reports_expired_cookie() -> None:
 
     assert connectivity.status is DoctorStatus.PASS
     assert authentication.status is DoctorStatus.FAIL
-    assert authentication.suggestion is not None
-    assert "lc login" in authentication.suggestion
+    assert authentication.suggestion == "请执行 lc login 刷新登录态"
 
 
 def test_diagnose_remote_reports_authenticated_user() -> None:

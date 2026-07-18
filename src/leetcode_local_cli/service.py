@@ -45,10 +45,10 @@ def client_error_message(kind: ClientErrorKind | None) -> str:
             return "LeetCode 接口数据结构异常，可能是接口变更"
 
         case ClientErrorKind.UNAUTHORIZED:
-            return "登录态无效或已过期，请重新执行 uv run lc login"
+            return "登录态无效或已过期，请重新执行 lc login"
 
         case ClientErrorKind.MISSING_CSRF:
-            return "缺少提交凭证 csrftoken，请重新执行 uv run lc login"
+            return "缺少提交凭证 csrftoken，请重新执行 lc login"
 
         case _:
             return "未知客户端错误"
@@ -67,18 +67,18 @@ def _load_cookies_from_session() -> dict[str, str]:
         error(str(exc))
         raise Exit(1)
     if not isinstance(session, dict):
-        warning("未找到有效登录态，请先执行 uv run lc login")
+        warning("未找到有效登录态，请先执行 lc login")
         raise Exit(1)
     cookies = session.get("cookies")
     if not isinstance(cookies, dict):
-        error("Session 文件结构无效，请重新执行 uv run lc login")
+        error("Session 文件结构无效，请重新执行 lc login")
         raise Exit(1)
     valid_cookies: dict[str, str] = {}
     for name in REQUIRED_COOKIE_NAMES:
         value = cookies.get(name)
         if not isinstance(value, str) or not value:
             error(f"缺少或无效的 Cookie：{name}")
-            warning("请重新执行 uv run lc login")
+            warning("请重新执行 lc login")
             raise Exit(1)
         valid_cookies[name] = value
     return valid_cookies

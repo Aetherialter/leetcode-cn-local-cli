@@ -65,7 +65,7 @@ def diagnose_session(path: Path | None = None) -> DoctorCheck:
                 name=SESSION_CHECK_NAME,
                 status=DoctorStatus.FAIL,
                 message="未找到 Session 文件",
-                suggestion="请执行 uv run lc login 创建登录态",
+                suggestion="请执行 lc login 创建登录态",
             )
 
         case SessionFileStatus.READ_ERROR:
@@ -73,7 +73,7 @@ def diagnose_session(path: Path | None = None) -> DoctorCheck:
                 name=SESSION_CHECK_NAME,
                 status=DoctorStatus.FAIL,
                 message="无法读取 Session 文件",
-                suggestion="请检查文件权限，或重新执行 uv run lc login",
+                suggestion="请检查文件权限，或重新执行 lc login",
             )
 
         case SessionFileStatus.INVALID_JSON:
@@ -81,7 +81,7 @@ def diagnose_session(path: Path | None = None) -> DoctorCheck:
                 name=SESSION_CHECK_NAME,
                 status=DoctorStatus.FAIL,
                 message="Session 文件不是有效的 JSON",
-                suggestion="请执行 uv run lc login 重新生成登录态",
+                suggestion="请执行 lc login 重新生成登录态",
             )
 
         case SessionFileStatus.INVALID_STRUCTURE:
@@ -89,7 +89,7 @@ def diagnose_session(path: Path | None = None) -> DoctorCheck:
                 name=SESSION_CHECK_NAME,
                 status=DoctorStatus.FAIL,
                 message="Session 文件结构无效",
-                suggestion="请执行 uv run lc login 重新生成登录态",
+                suggestion="请执行 lc login 重新生成登录态",
             )
 
         case SessionFileStatus.MISSING_COOKIES:
@@ -98,7 +98,7 @@ def diagnose_session(path: Path | None = None) -> DoctorCheck:
                 name=SESSION_CHECK_NAME,
                 status=DoctorStatus.FAIL,
                 message=f"缺少或无效的 Cookie：{missing}",
-                suggestion="请执行 uv run lc login 刷新 Cookie",
+                suggestion="请执行 lc login 刷新 Cookie",
             )
 
 
@@ -130,7 +130,7 @@ def diagnose_solution(path: Path | None = None) -> DoctorCheck:
                 name=SOLUTION_CHECK_NAME,
                 status=DoctorStatus.WARNING,
                 message="未找到 solution.py",
-                suggestion="请执行 uv run lc solve <题号> 创建解题文件",
+                suggestion="请执行 lc solve <题号> 创建解题文件",
             )
 
         case SolutionFileStatus.EMPTY:
@@ -138,7 +138,7 @@ def diagnose_solution(path: Path | None = None) -> DoctorCheck:
                 name=SOLUTION_CHECK_NAME,
                 status=DoctorStatus.WARNING,
                 message="solution.py 当前为空",
-                suggestion="请执行 uv run lc solve <题号> 生成解题模板",
+                suggestion="请执行 lc solve <题号> 生成解题模板",
             )
 
         case SolutionFileStatus.READ_ERROR:
@@ -159,7 +159,7 @@ def diagnose_solution(path: Path | None = None) -> DoctorCheck:
                 name=SOLUTION_CHECK_NAME,
                 status=DoctorStatus.FAIL,
                 message=f"solution.py 存在 Python 语法错误（{line}）",
-                suggestion="请修复语法错误后重新执行 uv run lc doctor",
+                suggestion="请修复语法错误后重新执行 lc doctor",
             )
 
         case SolutionFileStatus.NOT_SUBMITTABLE:
@@ -167,7 +167,7 @@ def diagnose_solution(path: Path | None = None) -> DoctorCheck:
                 name=SOLUTION_CHECK_NAME,
                 status=DoctorStatus.WARNING,
                 message=f"solution.py 可编译，但暂不可提交：{inspection.detail}",
-                suggestion="请执行 uv run lc solve <题号> 重新生成标准模板",
+                suggestion="请执行 lc solve <题号> 重新生成标准模板",
             )
 
 
@@ -196,7 +196,7 @@ def _diagnose_solution_runtime(path: Path | None) -> DoctorCheck | None:
             name=SOLUTION_CHECK_NAME,
             status=DoctorStatus.FAIL,
             message=f"solution.py 本地运行失败（退出码：{result.returncode}）",
-            suggestion="请执行 uv run lc test 定位本地测试错误",
+            suggestion="请执行 lc test 定位本地测试错误",
         )
     return None
 
@@ -228,7 +228,7 @@ def diagnose_remote(result: ClientResult) -> tuple[DoctorCheck, DoctorCheck]:
                         name=AUTHENTICATION_CHECK_NAME,
                         status=DoctorStatus.FAIL,
                         message="登录凭证无效或不完整",
-                        suggestion="请执行 uv run lc login 刷新登录态",
+                        suggestion="请执行 lc login 刷新登录态",
                     ),
                 )
             case _:
@@ -246,7 +246,7 @@ def diagnose_remote(result: ClientResult) -> tuple[DoctorCheck, DoctorCheck]:
                 name=AUTHENTICATION_CHECK_NAME,
                 status=DoctorStatus.WARNING,
                 message="网络或接口异常，暂时无法验证 Cookie",
-                suggestion="请先解决连接问题后重新执行 uv run lc doctor",
+                suggestion="请先解决连接问题后重新执行 lc doctor",
             ),
         )
 
@@ -264,7 +264,7 @@ def diagnose_remote(result: ClientResult) -> tuple[DoctorCheck, DoctorCheck]:
             name=AUTHENTICATION_CHECK_NAME,
             status=DoctorStatus.FAIL,
             message="Cookie 无效、已过期或当前未登录",
-            suggestion="请执行 uv run lc login 刷新登录态",
+            suggestion="请执行 lc login 刷新登录态",
         )
     else:
         username = status.get("username")
