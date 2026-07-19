@@ -1,11 +1,21 @@
 import json
 import os
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from getpass import getpass
 from pathlib import Path
 
-import browser_cookie3
+with warnings.catch_warnings():
+    # wmi 1.5.1, imported transitively by browser-cookie3 on Windows, contains
+    # invalid escape sequences in docstrings. Keep those third-party warnings
+    # out of every CLI invocation without disabling SyntaxWarning globally.
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*invalid escape sequence.*",
+        category=SyntaxWarning,
+    )
+    import browser_cookie3
 
 LC_DOMAIN = "leetcode.cn"
 # BROWSER_LOADERS = [("Edge", browser_cookie3.edge), ("Chrome", browser_cookie3.chrome)]

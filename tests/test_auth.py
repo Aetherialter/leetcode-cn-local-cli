@@ -1,6 +1,9 @@
 import json
 import os
+from pathlib import Path
 import stat
+import subprocess
+import sys
 
 import pytest
 
@@ -306,3 +309,35 @@ def test_parse_cookie_header_extracts_required_cookies() -> None:
 
 def test_parse_cookie_header_rejects_missing_required_cookie() -> None:
     assert auth.parse_cookie_header("LEETCODE_SESSION=session") is None
+
+
+def test_import_suppresses_transitive_invalid_escape_sequence_warning(
+    tmp_path,
+) -> None:
+    fake_dependency = tmp_path / "browser_cookie3.py"
+    fake_dependency.write_text(
+        '"""GetObjectText\\_"""\ndef chrome(*args, **kwargs):\n    return []\n',
+        encoding="utf-8",
+    )
+    project_src = Path(__file__).parents[1] / "src"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(tmp_path), str(project_src), environment.get("PYTHONPATH", "")]
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-W",
+            "always",
+            "-c",
+            "import leetcode_local_cli.auth",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=environment,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SyntaxWarning" not in result.stderr
