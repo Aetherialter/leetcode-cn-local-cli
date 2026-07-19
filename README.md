@@ -4,6 +4,10 @@
 
 当前版本：`v0.7.1`
 
+## 长期开发手册
+
+[v1.0 总体设计大纲](PROJECT_DESIGN.md)记录了从当前版本演进到稳定 CLI 与 Python API 的长期架构、版本阶段和验收标准。该文档目前处于 Draft 状态，具体实施前仍需按阶段审查。
+
 ## 核心能力
 
 - 读取 Chrome 中的 `leetcode.cn` Cookie，复用登录态。
