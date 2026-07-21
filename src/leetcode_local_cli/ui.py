@@ -9,10 +9,27 @@ from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from leetcode_local_cli.doctor import DoctorReport, DoctorStatus
 
-console = Console(width=shutil.get_terminal_size(fallback=(120, 24)).columns)
+console = Console(
+    width=shutil.get_terminal_size(fallback=(120, 24)).columns,
+    markup=False,
+    highlight=False,
+)
+
+_UNSAFE_TERMINAL_CHARACTERS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def _sanitize_terminal_text(value: object) -> str:
+    """Remove terminal control characters while preserving tabs and newlines."""
+    return _UNSAFE_TERMINAL_CHARACTERS.sub("\N{REPLACEMENT CHARACTER}", str(value))
+
+
+def _external_text(value: object, *, style: str = "") -> Text:
+    """Render external data as plain text with an optional trusted local style."""
+    return Text(_sanitize_terminal_text(value), style=style)
 
 
 def _terminal_width() -> int:
@@ -56,20 +73,20 @@ def _html_to_text(content_html: str) -> str:
 
 @contextmanager
 def loading(message: str) -> Iterator[None]:
-    with console.status(message, spinner="dots"):
+    with console.status(_external_text(message), spinner="dots"):
         yield
 
 
 def success(message: str) -> None:
-    console.print(f"[bold green]{message}[/bold green]")
+    console.print(_external_text(message, style="bold green"))
 
 
 def warning(message: str) -> None:
-    console.print(f"[bold yellow]{message}[/bold yellow]")
+    console.print(_external_text(message, style="bold yellow"))
 
 
 def error(message: str) -> None:
-    console.print(f"[bold red]{message}[/bold red]")
+    console.print(_external_text(message, style="bold red"))
 
 
 def render_profile(profile: dict[str, Any]) -> None:
@@ -80,16 +97,24 @@ def render_profile(profile: dict[str, Any]) -> None:
     table.add_column("Item", style="cyan", no_wrap=True)
     table.add_column("Value", style="white")
 
-    table.add_row("Username", str(profile.get("username") or "-"))
-    table.add_row("Real Name", str(profile.get("real_name") or "-"))
-    table.add_row("Premium", "Yes" if profile.get("is_premium") else "No")
+    table.add_row("Username", _external_text(profile.get("username") or "-"))
+    table.add_row("Real Name", _external_text(profile.get("real_name") or "-"))
+    table.add_row(
+        "Premium", _external_text("Yes" if profile.get("is_premium") else "No")
+    )
     table.add_row(
         "Solved",
-        f"All {solved['All']} | Easy {solved['Easy']} | Medium {solved['Medium']} | Hard {solved['Hard']}",
+        _external_text(
+            f"All {solved['All']} | Easy {solved['Easy']} | "
+            f"Medium {solved['Medium']} | Hard {solved['Hard']}"
+        ),
     )
     table.add_row(
         "Total",
-        f"All {total['All']} | Easy {total['Easy']} | Medium {total['Medium']} | Hard {total['Hard']}",
+        _external_text(
+            f"All {total['All']} | Easy {total['Easy']} | "
+            f"Medium {total['Medium']} | Hard {total['Hard']}"
+        ),
     )
 
     console.print(Panel(table, border_style="green", width=_terminal_width()))
@@ -121,19 +146,20 @@ def render_problem_list(problems: list[Any]) -> None:
     for problem in problems:
         difficulty = problem.difficulty or "-"
         difficulty_style = difficulty_styles.get(difficulty, "white")
-        paid_text = (
-            "[yellow]Paid[/yellow]" if problem.paid_only else "[green]Free[/green]"
+        paid_text = _external_text(
+            "Paid" if problem.paid_only else "Free",
+            style="yellow" if problem.paid_only else "green",
         )
         tags = ", ".join(problem.tags[:4])
         if len(problem.tags) > 4:
             tags = f"{tags}, ..."
 
         table.add_row(
-            problem.question_id,
-            problem.title or "-",
-            f"[{difficulty_style}]{difficulty}[/{difficulty_style}]",
+            _external_text(problem.question_id),
+            _external_text(problem.title or "-"),
+            _external_text(difficulty, style=difficulty_style),
             paid_text,
-            tags or "-",
+            _external_text(tags or "-", style="dim"),
         )
 
     console.print(table)
@@ -145,12 +171,12 @@ def render_problem_detail(problem: Any) -> None:
     meta = Table.grid(padding=(0, 2))
     meta.add_column(style="cyan", no_wrap=True)
     meta.add_column(style="white")
-    meta.add_row("ID", problem.question_id)
-    meta.add_row("Slug", problem.title_slug)
-    meta.add_row("Difficulty", problem.difficulty)
-    meta.add_row("Tags", tags)
+    meta.add_row("ID", _external_text(problem.question_id))
+    meta.add_row("Slug", _external_text(problem.title_slug))
+    meta.add_row("Difficulty", _external_text(problem.difficulty))
+    meta.add_row("Tags", _external_text(tags))
 
-    title = f"{problem.question_id}. {problem.title}"
+    title = _external_text(f"{problem.question_id}. {problem.title}")
     console.print(
         Panel(meta, title=title, border_style="cyan", width=_terminal_width())
     )
@@ -158,7 +184,7 @@ def render_problem_detail(problem: Any) -> None:
     content_text = _html_to_text(problem.content_html)
     console.print(
         Panel(
-            content_text or "-",
+            _external_text(content_text or "-"),
             title="题面",
             border_style="white",
             width=_terminal_width(),
@@ -171,9 +197,11 @@ def render_problem_detail(problem: Any) -> None:
 
 def render_submission_target(metadata: Any) -> None:
     console.print(
-        "[bold cyan]当前提交目标："
-        f"{metadata.problem_id}. {metadata.title} ({metadata.title_slug})"
-        "[/bold cyan]"
+        _external_text(
+            f"当前提交目标：{metadata.problem_id}. "
+            f"{metadata.title} ({metadata.title_slug})",
+            style="bold cyan",
+        )
     )
 
 
@@ -198,10 +226,10 @@ def render_doctor_report(report: DoctorReport) -> None:
     for check in report.checks:
         status_text, status_style = status_labels[check.status]
         table.add_row(
-            labels.get(check.name, check.name),
-            f"[{status_style}]{status_text}[/{status_style}]",
-            check.message,
-            check.suggestion or "-",
+            _external_text(labels.get(check.name, check.name)),
+            _external_text(status_text, style=status_style),
+            _external_text(check.message),
+            _external_text(check.suggestion or "-"),
         )
 
     border_style = "green" if report.ok else "red"
@@ -235,11 +263,11 @@ def render_submission_result(result: dict[str, Any] | None) -> None:
     )
     table.add_column("Item", style="cyan", no_wrap=True)
     table.add_column("Value", style="white")
-    table.add_row("Status", status_msg)
-    table.add_row("Runtime", runtime)
-    table.add_row("Memory", memory)
+    table.add_row("Status", _external_text(status_msg))
+    table.add_row("Runtime", _external_text(runtime))
+    table.add_row("Memory", _external_text(memory))
     if total_correct is not None and total_testcases is not None:
-        table.add_row("Cases", f"{total_correct} / {total_testcases}")
+        table.add_row("Cases", _external_text(f"{total_correct} / {total_testcases}"))
 
     console.print(
         Panel(
