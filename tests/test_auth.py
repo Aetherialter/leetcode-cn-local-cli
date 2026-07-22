@@ -4,6 +4,7 @@ from pathlib import Path
 import stat
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -309,6 +310,50 @@ def test_parse_cookie_header_extracts_required_cookies() -> None:
 
 def test_parse_cookie_header_rejects_missing_required_cookie() -> None:
     assert auth.parse_cookie_header("LEETCODE_SESSION=session") is None
+
+
+@pytest.mark.parametrize(
+    ("domain", "expected"),
+    [
+        ("leetcode.cn", True),
+        (".leetcode.cn", True),
+        ("www.leetcode.cn", True),
+        ("WWW.LEETCODE.CN", True),
+        ("evil-leetcode.cn", False),
+        ("notleetcode.cn", False),
+        ("leetcode.cn.evil.example", False),
+    ],
+)
+def test_cookie_domain_match_requires_exact_domain_boundary(
+    domain,
+    expected,
+) -> None:
+    assert auth._cookie_domain_matches(domain, auth.LC_DOMAIN) is expected
+
+
+def test_browser_cookie_loader_rejects_required_cookies_from_suffix_domain(
+    monkeypatch,
+) -> None:
+    cookies = [
+        SimpleNamespace(
+            name="LEETCODE_SESSION",
+            value="session-value",
+            domain="evil-leetcode.cn",
+        ),
+        SimpleNamespace(
+            name="csrftoken",
+            value="csrf-value",
+            domain="evil-leetcode.cn",
+        ),
+    ]
+
+    monkeypatch.setattr(
+        auth,
+        "BROWSER_LOADERS",
+        [("Fake Browser", lambda *, domain_name: cookies)],
+    )
+
+    assert auth.get_cookies_from_browser() is None
 
 
 def test_import_suppresses_transitive_invalid_escape_sequence_warning(

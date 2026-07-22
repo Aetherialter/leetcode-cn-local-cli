@@ -88,7 +88,7 @@ def get_cookies_from_browser() -> tuple[str, dict[str, str]] | None:
             for cookie in cookie_jar
             if (
                 cookie.domain
-                and cookie.domain.lstrip(".").endswith(LC_DOMAIN)
+                and _cookie_domain_matches(cookie.domain, LC_DOMAIN)
                 and cookie.value is not None
             )
         }
@@ -99,6 +99,15 @@ def get_cookies_from_browser() -> tuple[str, dict[str, str]] | None:
             }
 
     return None
+
+
+def _cookie_domain_matches(domain: str, expected_domain: str) -> bool:
+    normalized_domain = domain.removeprefix(".").lower()
+    normalized_expected_domain = expected_domain.lower()
+    return (
+        normalized_domain == normalized_expected_domain
+        or normalized_domain.endswith(f".{normalized_expected_domain}")
+    )
 
 
 def parse_cookie_header(cookies: str) -> dict[str, str] | None:
