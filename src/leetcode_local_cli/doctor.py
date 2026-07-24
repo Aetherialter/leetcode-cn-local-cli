@@ -102,10 +102,12 @@ def diagnose_session(path: Path | None = None) -> DoctorCheck:
             )
 
 
-def diagnose_solution(path: Path | None = None) -> DoctorCheck:
-    """Inspect solution.py and verify its local entry point in a subprocess."""
+def diagnose_solution(
+    path: Path | None = None, *, run_solution: bool = False
+) -> DoctorCheck:
+    """Inspect solution.py and optionally verify it in a subprocess."""
     inspection = inspect_solution_file(path)
-    if inspection.status in {
+    if run_solution and inspection.status in {
         SolutionFileStatus.READY,
         SolutionFileStatus.NOT_SUBMITTABLE,
     }:
@@ -119,10 +121,16 @@ def diagnose_solution(path: Path | None = None) -> DoctorCheck:
             target = (
                 f"{metadata.problem_id}. {metadata.title}" if metadata else "未知题目"
             )
+            message = (
+                "solution.py 语法、提交信息与本地运行正常"
+                if run_solution
+                else "solution.py 语法和提交信息正常"
+            )
+
             return DoctorCheck(
                 name=SOLUTION_CHECK_NAME,
                 status=DoctorStatus.PASS,
-                message=f"solution.py 语法、提交信息与本地运行正常（{target}）",
+                message=f"{message}（{target}）",
             )
 
         case SolutionFileStatus.MISSING:

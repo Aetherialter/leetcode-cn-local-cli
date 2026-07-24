@@ -85,7 +85,8 @@ lc submit
 | `lc get <题号>` | 在线展示题目详情 |
 | `lc solve <题号>` | 覆盖生成当前目录的 `solution.py` |
 | `lc test` | 运行本地 `solution.py` |
-| `lc doctor` | 诊断 Session、网络、Cookie 和 `solution.py` |
+| `lc doctor` | 诊断 Session、网络、Cookie 和 `solution.py`，默认不执行代码 |
+| `lc doctor --run-solution` | 额外运行当前工作区的 `solution.py` |
 | `lc submit` | 提交当前 `solution.py` 的提交区域代码 |
 
 ## solution.py 规则
@@ -131,7 +132,9 @@ class Solution:
 - `lc test` 默认隐藏 Python traceback，只展示本地测试通过或失败。
 - 如果 `run_cases()` 中没有断言，`lc test` 显示通过是当前轻量化设计允许的行为。
 - 树、链表等题型中，LeetCode 模板里的 `TreeNode` / `ListNode` 定义默认保持注释状态；如需本地构造用例，请自行取消注释并编写测试数据。
-- `lc doctor` 会向 LeetCode 中文站发送一次登录态查询，并在本地运行语法有效的 `solution.py`；本地运行超过 10 秒会判定失败。
+- `lc doctor` 会向 LeetCode 中文站发送一次登录态查询，并静态检查 `solution.py` 的存在性、可读性、Python 语法和提交结构；默认不会执行文件。
+- `lc doctor --run-solution` 会额外运行语法有效的 `solution.py`，本地运行超过 10 秒会判定失败。
+- `lc test` 和 `lc doctor --run-solution` 会以当前用户权限执行本地 Python 代码，请勿在不可信工作区中运行。
 
 ## 安全说明
 

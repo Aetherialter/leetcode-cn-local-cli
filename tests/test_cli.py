@@ -46,18 +46,44 @@ def test_help_registers_doctor_command() -> None:
 def test_doctor_command_renders_successful_report(monkeypatch) -> None:
     report = DoctorReport(checks=(DoctorCheck("session", DoctorStatus.PASS, "ok"),))
     rendered = []
-    monkeypatch.setattr(cli, "get_doctor_report", lambda: report)
+    received = []
+    monkeypatch.setattr(
+        cli,
+        "get_doctor_report",
+        lambda *, run_solution=False: received.append(run_solution) or report,
+    )
     monkeypatch.setattr(cli, "render_doctor_report", rendered.append)
 
     result = runner.invoke(cli.app, ["doctor"])
 
     assert result.exit_code == 0
+    assert received == [False]
     assert rendered == [report]
+
+
+def test_doctor_command_forwards_run_solution_option(monkeypatch) -> None:
+    report = DoctorReport(checks=(DoctorCheck("solution", DoctorStatus.PASS, "ok"),))
+    received = []
+    monkeypatch.setattr(
+        cli,
+        "get_doctor_report",
+        lambda *, run_solution=False: received.append(run_solution) or report,
+    )
+    monkeypatch.setattr(cli, "render_doctor_report", lambda report: None)
+
+    result = runner.invoke(cli.app, ["doctor", "--run-solution"])
+
+    assert result.exit_code == 0
+    assert received == [True]
 
 
 def test_doctor_command_exits_nonzero_for_failed_report(monkeypatch) -> None:
     report = DoctorReport(checks=(DoctorCheck("session", DoctorStatus.FAIL, "failed"),))
-    monkeypatch.setattr(cli, "get_doctor_report", lambda: report)
+    monkeypatch.setattr(
+        cli,
+        "get_doctor_report",
+        lambda *, run_solution=False: report,
+    )
     monkeypatch.setattr(cli, "render_doctor_report", lambda report: None)
 
     result = runner.invoke(cli.app, ["doctor"])

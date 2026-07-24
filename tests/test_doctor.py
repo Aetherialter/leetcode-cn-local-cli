@@ -128,7 +128,7 @@ def test_diagnose_solution_reports_ready_workspace(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    result = diagnose_solution(solution_file)
+    result = diagnose_solution(solution_file, run_solution=True)
 
     assert result.status is DoctorStatus.PASS
     assert "1. Two Sum" in result.message
@@ -140,7 +140,7 @@ def test_diagnose_solution_reports_runtime_failure(tmp_path) -> None:
     content = build_solution_content("class Solution:\n    pass", metadata)
     solution_file.write_text(f"{content}\nraise RuntimeError\n", encoding="utf-8")
 
-    result = diagnose_solution(solution_file)
+    result = diagnose_solution(solution_file, run_solution=True)
 
     assert result.status is DoctorStatus.FAIL
     assert "本地运行失败" in result.message
@@ -151,7 +151,7 @@ def test_diagnose_solution_runs_valid_file_without_submission_markers(tmp_path) 
     solution_file = tmp_path / "solution.py"
     solution_file.write_text("raise RuntimeError\n", encoding="utf-8")
 
-    result = diagnose_solution(solution_file)
+    result = diagnose_solution(solution_file, run_solution=True)
 
     assert result.status is DoctorStatus.FAIL
     assert "本地运行失败" in result.message
@@ -170,7 +170,7 @@ def test_diagnose_solution_reports_runtime_timeout(tmp_path, monkeypatch) -> Non
 
     monkeypatch.setattr("leetcode_local_cli.doctor.run_solution_file", raise_timeout)
 
-    result = diagnose_solution(solution_file)
+    result = diagnose_solution(solution_file, run_solution=True)
 
     assert result.status is DoctorStatus.FAIL
     assert "运行超时" in result.message
@@ -246,3 +246,32 @@ def test_diagnose_remote_reports_authenticated_user() -> None:
     assert connectivity.status is DoctorStatus.PASS
     assert authentication.status is DoctorStatus.PASS
     assert "learner" in authentication.message
+
+
+def test_diagnose_solution_does_not_run_solution_by_default(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    solution_file = tmp_path / "solution.py"
+    metadata = ProblemMetadata("1", "1", "Two Sum", "two-sum")
+    solution_file.write_text(
+        build_solution_content(
+            "class Solution:\n    pass",
+            metadata,
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("run_solution_file must not be called")
+
+    monkeypatch.setattr(
+        "leetcode_local_cli.doctor.run_solution_file",
+        fail_if_called,
+    )
+
+    result = diagnose_solution(solution_file)
+
+    assert result.status is DoctorStatus.PASS
+    assert "语法和提交信息正常" in result.message
+    assert "本地运行正常" not in result.message

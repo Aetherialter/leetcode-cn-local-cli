@@ -190,10 +190,18 @@ def test_get_doctor_report_collects_local_and_remote_checks(monkeypatch) -> None
         "diagnose_session",
         lambda: _check("session"),
     )
-    monkeypatch.setattr(service, "diagnose_solution", lambda: _check("solution"))
+    received = []
+    monkeypatch.setattr(
+        service,
+        "diagnose_solution",
+        lambda *, run_solution=False: (
+            received.append(run_solution) or _check("solution")
+        ),
+    )
 
     report = service.get_doctor_report()
 
+    assert received == [False]
     assert [check.name for check in report.checks] == [
         "session",
         "connectivity",
@@ -201,6 +209,28 @@ def test_get_doctor_report_collects_local_and_remote_checks(monkeypatch) -> None
         "solution",
     ]
     assert report.ok
+
+
+def test_get_doctor_report_forwards_explicit_solution_execution(monkeypatch) -> None:
+    class DoctorClient(FakeClient):
+        def user_status(self) -> ClientResult:
+            return ClientResult(data={"isSignedIn": False})
+
+    monkeypatch.setattr(service, "load_session", lambda: None)
+    monkeypatch.setattr(service, "LeetCodeClient", DoctorClient)
+    monkeypatch.setattr(service, "diagnose_session", lambda: _check("session"))
+    received = []
+    monkeypatch.setattr(
+        service,
+        "diagnose_solution",
+        lambda *, run_solution=False: (
+            received.append(run_solution) or _check("solution")
+        ),
+    )
+
+    service.get_doctor_report(run_solution=True)
+
+    assert received == [True]
 
 
 def _check(name: str) -> DoctorCheck:

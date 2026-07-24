@@ -199,9 +199,17 @@ def test() -> None:
 
 
 @app.command()
-def doctor() -> None:
+def doctor(
+    run_solution: Annotated[
+        bool,
+        Option(
+            "--run-solution",
+            help="显式执行当前工作区的 solution.py",
+        ),
+    ] = False,
+) -> None:
     with loading("正在检查本地环境与 LeetCode 连接..."):
-        report = get_doctor_report()
+        report = get_doctor_report(run_solution=run_solution)
     render_doctor_report(report)
     if not report.ok:
         raise Exit(1)

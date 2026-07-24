@@ -201,9 +201,11 @@ def get_problem_detail_by_question_id(question_id: str) -> ProblemDetail:
     return problem_detail
 
 
-def get_doctor_report() -> DoctorReport:
+def get_doctor_report(*, run_solution: bool = False) -> DoctorReport:
     session_check = diagnose_session()
-    solution_check = diagnose_solution()
+    solution_check = diagnose_solution(
+        run_solution=run_solution,
+    )
 
     cookies: dict[str, str] | None = None
     try:
