@@ -1,0 +1,11 @@
+{
+  "languages": {
+    "Python": {
+      "language_servers": [
+        "pyright",
+        "ruff",
+        "!basedpyright"
+      ]
+    }
+  }
+}
