@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_FILE = PROJECT_ROOT / "pyproject.toml"
 RELEASE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "release.yml"
 RELEASE_NOTES_DIR = PROJECT_ROOT / ".github" / "release-notes"
+SMOKE_TEST = PROJECT_ROOT / "scripts" / "smoke_test.py"
 
 
 def test_current_version_has_well_formed_release_notes() -> None:
@@ -30,6 +31,13 @@ def test_release_workflow_uses_versioned_title_and_notes() -> None:
     assert ".github/release-notes/${GITHUB_REF_NAME}.md" in workflow
     assert '--title "$release_title"' in workflow
     assert '--notes-file "$notes_file"' in workflow
+
+
+def test_release_smoke_test_decodes_cli_output_as_utf8() -> None:
+    smoke_test = SMOKE_TEST.read_text(encoding="utf-8")
+
+    assert 'encoding="utf-8"' in smoke_test
+    assert "text=True" not in smoke_test
 
 
 @pytest.mark.skipif(

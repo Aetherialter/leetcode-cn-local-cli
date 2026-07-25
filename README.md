@@ -2,7 +2,7 @@
 
 一个面向 LeetCode 中文站的轻量本地刷题 CLI。它复用浏览器登录态，在线获取题目，在当前工作目录生成单文件 `solution.py`，并支持本地测试和远程提交。
 
-当前版本：`v0.7.1`
+当前版本：`v0.7.2`
 
 ## 长期开发手册
 
@@ -36,13 +36,13 @@
 Linux / macOS 一键安装：
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.1/scripts/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.2/scripts/install.sh | sh
 ```
 
 Windows PowerShell 一键安装：
 
 ```powershell
-powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.1/scripts/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.2/scripts/install.ps1 | iex"
 ```
 
 安装器要求系统已安装 uv；如果未检测到 uv，会安全退出并提示访问 [uv 官方文档](https://docs.astral.sh/uv/)，不会自动下载或执行第三方远端安装脚本。检测到 uv 后，安装器会使用 `uv tool install` 安装 `leetcode-local-cli`，并执行 `lc --version` 验证结果。安装过程不使用 `sudo`，也不会保存 PyPI 或 GitHub 凭据。
@@ -230,6 +230,7 @@ tests/
 - `v0.6.0`: 新增 `lc doctor`，完善客户端边界校验、本地文件诊断、错误提示和提交目标展示。
 - `v0.7.0`: uv 全局工具安装、跨平台引导脚本和 PyPI Trusted Publisher 发布流程。
 - `v0.7.1`: 修正安装版 CLI 的命令建议，并引入版本化 GitHub Release Notes。
+- `v0.7.2`: 收紧安全边界，避免诊断命令默认执行解题文件，并移除安装器的远端脚本执行。
 - `v0.8`: `lc init` 与正式工作区管理。
 - `v0.9`: 轻量缓存。
 - `v0.10`: 样例提取原型。

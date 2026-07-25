@@ -13,7 +13,7 @@ def run_lc(*arguments: str) -> subprocess.CompletedProcess[str]:
         ["lc", *arguments],
         capture_output=True,
         check=False,
-        text=True,
+        encoding="utf-8",
     )
 
 
