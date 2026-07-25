@@ -211,7 +211,7 @@
 
 - 新增 Linux/macOS `scripts/install.sh`。
 - 新增 Windows `scripts/install.ps1`。
-- 未检测到 uv 时，通过 uv 官方 HTTPS 安装器自动引导。
+- 检查系统是否已安装 uv；未检测到时安全退出并提示 uv 官方文档，不自动执行第三方远端安装脚本。
 - 使用 `uv tool install` 安装或替换 `leetcode-local-cli`。
 - 新增 `lc --version`，并在安装结束后验证可执行命令。
 - 支持通过 `LEETCODE_LOCAL_CLI_INSTALL_SPEC` 指向本地 wheel，完成发布前端到端验收。

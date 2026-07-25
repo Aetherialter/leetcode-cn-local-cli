@@ -45,7 +45,7 @@ Windows PowerShell 一键安装：
 powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.1/scripts/install.ps1 | iex"
 ```
 
-安装器会在缺少 uv 时通过 uv 官方 HTTPS 安装器完成引导，然后使用 `uv tool install` 安装 `leetcode-local-cli`，并执行 `lc --version` 验证结果。安装过程不使用 `sudo`，也不会保存 PyPI 或 GitHub 凭据。
+安装器要求系统已安装 uv；如果未检测到 uv，会安全退出并提示访问 [uv 官方文档](https://docs.astral.sh/uv/)，不会自动下载或执行第三方远端安装脚本。检测到 uv 后，安装器会使用 `uv tool install` 安装 `leetcode-local-cli`，并执行 `lc --version` 验证结果。安装过程不使用 `sudo`，也不会保存 PyPI 或 GitHub 凭据。
 
 已经安装 uv 时，也可以直接安装：
 

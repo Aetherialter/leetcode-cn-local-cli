@@ -101,59 +101,9 @@ def test_shell_installer_uses_existing_uv_and_verifies_lc(tmp_path) -> None:
 
 
 @REQUIRES_POSIX_SHELL
-def test_shell_installer_bootstraps_uv_when_missing(tmp_path) -> None:
-    environment, fake_bin, log_file = _installer_environment(tmp_path)
-    fake_uv_template = tmp_path / "fake-uv"
-    fake_uv_installer = tmp_path / "fake-install-uv.sh"
-    _write_fake_uv(fake_uv_template)
-    _write_executable(
-        fake_uv_installer,
-        """#!/bin/sh
-mkdir -p "$HOME/.local/bin"
-cp "$FAKE_UV_TEMPLATE" "$HOME/.local/bin/uv"
-chmod +x "$HOME/.local/bin/uv"
-""",
-    )
-    _write_executable(
-        fake_bin / "curl",
-        """#!/bin/sh
-output=''
-while [ "$#" -gt 0 ]; do
-    if [ "$1" = '-o' ]; then
-        shift
-        output=$1
-    fi
-    shift
-done
-[ -n "$output" ] || exit 2
-cp "$FAKE_UV_INSTALLER" "$output"
-""",
-    )
-    environment.update(
-        {
-            "FAKE_UV_INSTALLER": str(fake_uv_installer),
-            "FAKE_UV_TEMPLATE": str(fake_uv_template),
-        }
-    )
-
-    result = subprocess.run(
-        [str(SHELL_INSTALLER)],
-        capture_output=True,
-        text=True,
-        env=environment,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert (tmp_path / "home" / ".local" / "bin" / "uv").is_file()
-    assert "未检测到 uv" in result.stdout
-    assert "tool install --force" in log_file.read_text(encoding="utf-8")
-
-
-@REQUIRES_POSIX_SHELL
-def test_shell_installer_rejects_non_https_uv_installer(tmp_path) -> None:
-    environment, _, _ = _installer_environment(tmp_path)
-    environment["LEETCODE_LOCAL_CLI_UV_INSTALL_URL"] = "http://example.com/install.sh"
+def test_shell_installer_stops_with_uv_docs_when_uv_is_missing(tmp_path) -> None:
+    environment, _, log_file = _installer_environment(tmp_path)
+    environment.pop("UV_INSTALL_DIR", None)
 
     result = subprocess.run(
         [str(SHELL_INSTALLER)],
@@ -164,7 +114,9 @@ def test_shell_installer_rejects_non_https_uv_installer(tmp_path) -> None:
     )
 
     assert result.returncode == 1
-    assert "必须使用 HTTPS" in result.stderr
+    assert "未检测到 uv" in result.stderr
+    assert "https://docs.astral.sh/uv/" in result.stderr
+    assert not log_file.exists()
 
 
 @REQUIRES_POSIX_SHELL
@@ -235,9 +187,25 @@ exit 2
 def test_powershell_installer_declares_same_install_contract() -> None:
     content = POWERSHELL_INSTALLER.read_text(encoding="utf-8")
 
-    assert "https://astral.sh/uv/install.ps1" in content
+    assert "https://docs.astral.sh/uv/" in content
     assert "LEETCODE_LOCAL_CLI_INSTALL_SPEC" in content
     assert "tool install --force" in content
     assert "tool update-shell" in content
     assert "--version" in content
     assert 'IndexOf("http://"' in content
+    assert "Invoke-WebRequest" not in content
+    assert "Invoke-Expression" not in content
+
+
+def test_installers_require_preinstalled_uv_without_remote_bootstrap() -> None:
+    shell_content = SHELL_INSTALLER.read_text(encoding="utf-8")
+    powershell_content = POWERSHELL_INSTALLER.read_text(encoding="utf-8")
+
+    for content in (shell_content, powershell_content):
+        assert "https://docs.astral.sh/uv/" in content
+        assert "LEETCODE_LOCAL_CLI_UV_INSTALL_URL" not in content
+        assert "astral.sh/uv/install" not in content
+
+    assert "curl " not in shell_content
+    assert "Invoke-WebRequest" not in powershell_content
+    assert "Invoke-Expression" not in powershell_content

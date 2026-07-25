@@ -2,9 +2,8 @@
 
 set -eu
 
-UV_INSTALL_URL=${LEETCODE_LOCAL_CLI_UV_INSTALL_URL:-https://astral.sh/uv/install.sh}
 INSTALL_SPEC=${LEETCODE_LOCAL_CLI_INSTALL_SPEC:-leetcode-local-cli}
-TEMP_DIR=""
+UV_DOCS_URL=https://docs.astral.sh/uv/
 
 case "$INSTALL_SPEC" in
     *http://*)
@@ -25,14 +24,6 @@ fail() {
     printf '%s\n' "[leetcode-local-cli] 错误：$*" >&2
     exit 1
 }
-
-cleanup() {
-    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-        rm -rf "$TEMP_DIR"
-    fi
-}
-
-trap cleanup EXIT HUP INT TERM
 
 find_uv() {
     if command -v uv >/dev/null 2>&1; then
@@ -56,20 +47,7 @@ find_uv() {
 
 UV_PATH=$(find_uv || true)
 if [ -z "$UV_PATH" ]; then
-    case "$UV_INSTALL_URL" in
-        https://*) ;;
-        *) fail "uv 安装地址必须使用 HTTPS：$UV_INSTALL_URL" ;;
-    esac
-    command -v curl >/dev/null 2>&1 || fail "未找到 curl，无法下载 uv 官方安装器"
-
-    TEMP_DIR=$(mktemp -d)
-    UV_INSTALLER="$TEMP_DIR/install-uv.sh"
-    info "未检测到 uv，正在下载安装官方 uv..."
-    curl --proto '=https' --tlsv1.2 -LsSf "$UV_INSTALL_URL" -o "$UV_INSTALLER"
-    sh "$UV_INSTALLER"
-
-    UV_PATH=$(find_uv || true)
-    [ -n "$UV_PATH" ] || fail "uv 安装完成后仍无法定位可执行文件"
+    fail "未检测到 uv。请先按照 uv 官方文档安装：$UV_DOCS_URL"
 fi
 
 info "使用 uv：$UV_PATH"

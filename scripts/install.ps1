@@ -1,16 +1,12 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$UvInstallUrl = if ($env:LEETCODE_LOCAL_CLI_UV_INSTALL_URL) {
-    $env:LEETCODE_LOCAL_CLI_UV_INSTALL_URL
-} else {
-    "https://astral.sh/uv/install.ps1"
-}
 $InstallSpec = if ($env:LEETCODE_LOCAL_CLI_INSTALL_SPEC) {
     $env:LEETCODE_LOCAL_CLI_INSTALL_SPEC
 } else {
     "leetcode-local-cli"
 }
+$UvDocsUrl = "https://docs.astral.sh/uv/"
 if ($InstallSpec.IndexOf("http://", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
     throw "包安装地址必须使用 HTTPS：$InstallSpec"
 }
@@ -44,26 +40,7 @@ function Find-Uv {
 
 $UvPath = Find-Uv
 if (-not $UvPath) {
-    $Uri = [Uri]$UvInstallUrl
-    if ($Uri.Scheme -ne "https") {
-        throw "uv 安装地址必须使用 HTTPS：$UvInstallUrl"
-    }
-
-    $InstallerPath = Join-Path (
-        [System.IO.Path]::GetTempPath()
-    ) "leetcode-local-cli-install-uv-$([Guid]::NewGuid()).ps1"
-    try {
-        Write-Info "未检测到 uv，正在下载安装官方 uv..."
-        Invoke-WebRequest -UseBasicParsing -Uri $UvInstallUrl -OutFile $InstallerPath
-        & $InstallerPath
-    } finally {
-        Remove-Item -LiteralPath $InstallerPath -Force -ErrorAction SilentlyContinue
-    }
-
-    $UvPath = Find-Uv
-    if (-not $UvPath) {
-        throw "uv 安装完成后仍无法定位可执行文件"
-    }
+    throw "未检测到 uv。请先按照 uv 官方文档安装：$UvDocsUrl"
 }
 
 Write-Info "使用 uv：$UvPath"
