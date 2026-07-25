@@ -4,6 +4,7 @@ from typer import Exit
 from leetcode_local_cli import service
 from leetcode_local_cli.client import ClientErrorKind, ClientResult
 from leetcode_local_cli.doctor import DoctorCheck, DoctorStatus
+from leetcode_local_cli.problem import ParseQuestionIdResult
 from leetcode_local_cli.workspace import ProblemMetadata
 
 
@@ -74,6 +75,21 @@ def test_authentication_error_messages_use_installed_cli_command(error_kind) -> 
 
     assert "lc login" in message
     assert "uv run" not in message
+
+
+def test_parse_question_id_exits_when_success_result_has_no_id(monkeypatch) -> None:
+    messages = []
+    monkeypatch.setattr(
+        service,
+        "parse_question_id",
+        lambda question_id: ParseQuestionIdResult(),
+    )
+    monkeypatch.setattr(service, "error", messages.append)
+
+    with pytest.raises(Exit):
+        service._parse_question_id_or_exit("1")
+
+    assert messages == ["题号解析失败"]
 
 
 def test_get_problem_summaries_exits_on_invalid_response(monkeypatch) -> None:

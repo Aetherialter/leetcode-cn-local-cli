@@ -6,6 +6,7 @@ from enum import Enum
 from getpass import getpass
 from pathlib import Path
 
+
 with warnings.catch_warnings():
     # wmi 1.5.1, imported transitively by browser-cookie3 on Windows, contains
     # invalid escape sequences in docstrings. Keep those third-party warnings
@@ -80,7 +81,7 @@ def get_cookies_from_browser() -> tuple[str, dict[str, str]] | None:
         try:
             cookie_jar = loader(domain_name=LC_DOMAIN)
 
-        except Exception:
+        except (browser_cookie3.BrowserCookieError, OSError, RuntimeError):
             continue
 
         cookies_dict: dict[str, str] = {

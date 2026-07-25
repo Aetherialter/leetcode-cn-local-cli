@@ -160,7 +160,8 @@ class LeetCodeClient:
         if not result.ok:
             return result
         payload = result.data
-        assert isinstance(payload, dict)
+        if not isinstance(payload, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
         data = payload.get("data")
         if not isinstance(data, dict):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
@@ -180,7 +181,8 @@ class LeetCodeClient:
         if not result.ok:
             return result
         payload = result.data
-        assert isinstance(payload, dict)
+        if not isinstance(payload, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
 
         stats = {
             "solved": {
@@ -276,7 +278,8 @@ class LeetCodeClient:
         if not result.ok:
             return result
         response_payload = result.data
-        assert isinstance(response_payload, dict)
+        if not isinstance(response_payload, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
         data = response_payload.get("data")
         if not isinstance(data, dict):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
@@ -310,7 +313,8 @@ class LeetCodeClient:
         if not result.ok:
             return result
         response_payload = result.data
-        assert isinstance(response_payload, dict)
+        if not isinstance(response_payload, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
         data = response_payload.get("data")
         if not isinstance(data, dict):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
@@ -343,7 +347,8 @@ class LeetCodeClient:
         if not result.ok:
             return result
         response_payload = result.data
-        assert isinstance(response_payload, dict)
+        if not isinstance(response_payload, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
         submission_id = response_payload.get("submission_id")
         if not isinstance(submission_id, int) or isinstance(submission_id, bool):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
@@ -358,7 +363,8 @@ class LeetCodeClient:
         if not result.ok:
             return result
         payload = result.data
-        assert isinstance(payload, dict)
+        if not isinstance(payload, dict):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
         if not isinstance(payload.get("state"), str):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
         return result

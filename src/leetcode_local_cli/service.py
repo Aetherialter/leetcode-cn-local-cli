@@ -86,11 +86,11 @@ def _load_cookies_from_session() -> dict[str, str]:
 
 def _parse_question_id_or_exit(question_id: str) -> str:
     parse_result = parse_question_id(question_id)
-    if not parse_result.ok:
+    parsed_question_id = parse_result.question_id
+    if not parse_result.ok or parsed_question_id is None:
         error(parse_result.error_message or "题号解析失败")
         raise Exit(1)
-    assert parse_result.question_id is not None
-    return parse_result.question_id
+    return parsed_question_id
 
 
 def _find_problem_summary_by_question_id_online(

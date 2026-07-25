@@ -356,6 +356,68 @@ def test_browser_cookie_loader_rejects_required_cookies_from_suffix_domain(
     assert auth.get_cookies_from_browser() is None
 
 
+@pytest.mark.parametrize(
+    "loader_error",
+    [
+        auth.browser_cookie3.BrowserCookieError("browser unavailable"),
+        OSError("cookie database unavailable"),
+        RuntimeError("cookie decryption failed"),
+    ],
+)
+def test_browser_cookie_loader_continues_after_known_errors(
+    loader_error,
+    monkeypatch,
+) -> None:
+    cookies = [
+        SimpleNamespace(
+            name="LEETCODE_SESSION",
+            value="session-value",
+            domain=".leetcode.cn",
+        ),
+        SimpleNamespace(
+            name="csrftoken",
+            value="csrf-value",
+            domain=".leetcode.cn",
+        ),
+    ]
+
+    def fail_loader(*, domain_name):
+        raise loader_error
+
+    monkeypatch.setattr(
+        auth,
+        "BROWSER_LOADERS",
+        [
+            ("Broken Browser", fail_loader),
+            ("Working Browser", lambda *, domain_name: cookies),
+        ],
+    )
+
+    result = auth.get_cookies_from_browser()
+
+    assert result == (
+        "Working Browser",
+        {
+            "LEETCODE_SESSION": "session-value",
+            "csrftoken": "csrf-value",
+        },
+    )
+
+
+def test_browser_cookie_loader_does_not_hide_unexpected_errors(monkeypatch) -> None:
+    def fail_loader(*, domain_name):
+        raise TypeError("unexpected loader bug")
+
+    monkeypatch.setattr(
+        auth,
+        "BROWSER_LOADERS",
+        [("Broken Browser", fail_loader)],
+    )
+
+    with pytest.raises(TypeError, match="unexpected loader bug"):
+        auth.get_cookies_from_browser()
+
+
 def test_import_suppresses_transitive_invalid_escape_sequence_warning(
     tmp_path,
 ) -> None:

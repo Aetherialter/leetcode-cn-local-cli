@@ -4,6 +4,7 @@ import pytest
 from leetcode_local_cli.client import (
     BASE_URL,
     ClientErrorKind,
+    ClientResult,
     LeetCodeClient,
 )
 
@@ -156,5 +157,33 @@ def test_submission_result_rejects_missing_state() -> None:
 
     with _client_with_transport(handler) as client:
         result = client.get_submission_result(123)
+
+    assert result.error is ClientErrorKind.INVALID_RESPONSE
+
+
+@pytest.mark.parametrize(
+    ("method_name", "args"),
+    [
+        ("user_status", ()),
+        ("problem_stats", ()),
+        ("problem_list", ()),
+        ("problem_detail", ("two-sum",)),
+        ("submit_solution", ("two-sum", "1", "class Solution: pass")),
+        ("get_submission_result", (123,)),
+    ],
+)
+def test_client_methods_reject_non_dict_success_data(
+    method_name,
+    args,
+    monkeypatch,
+) -> None:
+    with LeetCodeClient({"csrftoken": "csrf-value"}) as client:
+        monkeypatch.setattr(
+            client,
+            "_request_json",
+            lambda *args, **kwargs: ClientResult(data=None),
+        )
+
+        result = getattr(client, method_name)(*args)
 
     assert result.error is ClientErrorKind.INVALID_RESPONSE
