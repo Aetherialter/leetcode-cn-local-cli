@@ -8,6 +8,8 @@
 
 [v1.0 总体设计大纲](PROJECT_DESIGN.md)记录了从当前版本演进到稳定 CLI 与 Python API 的长期架构、版本阶段和验收标准。该文档目前处于 Draft 状态，具体实施前仍需按阶段审查。
 
+[产品边界与待定决策](PRODUCT_BOUNDARIES.md)记录当前已经确认的行为，以及必须先由维护者拍板才能实现的测试、提交、工作区、编辑器和兼容性语义。
+
 [安全审计与修复清单](SECURITY_REVIEW.md)记录了当前源码的风险等级、攻击前提和建议修复顺序；其中列出的问题尚未全部修复。
 
 ## 核心能力
@@ -17,7 +19,7 @@
 - 使用当前工作目录的 `solution.py` 作为唯一主要工作区。
 - `lc solve <题号>` 生成可编辑的 Python 解题模板。
 - 生成模板后会按当前系统尝试打开 `solution.py`。
-- `lc test` 运行 `solution.py` 中的 `run_cases()`。
+- `lc test` 执行本地 `solution.py`；`run_cases()` 的最终调用契约仍在产品边界文档中待定。
 - `lc doctor` 一次检查 Session 文件、站点连通性、Cookie 登录态和本地解题文件。
 - `lc submit` 提交 marker 区域代码到 LeetCode 中文站，并轮询判题结果。
 - 生成模板时写入 `problem_id` 和 `submit_question_id`，避免展示题号和 LeetCode 内部提交 ID 混用。
@@ -130,7 +132,7 @@ class Solution:
 - `lc solve` 会强制覆盖 `solution.py`。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
 - `lc test` 默认隐藏 Python traceback，只展示本地测试通过或失败。
-- 如果 `run_cases()` 中没有断言，`lc test` 显示通过是当前轻量化设计允许的行为。
+- 当前 `lc test` 执行整个 `solution.py`，不验证或主动调用 `run_cases()`；缺少该函数的非空脚本可能显示通过，此行为正在重新定界。
 - 树、链表等题型中，LeetCode 模板里的 `TreeNode` / `ListNode` 定义默认保持注释状态；如需本地构造用例，请自行取消注释并编写测试数据。
 - `lc doctor` 会向 LeetCode 中文站发送一次登录态查询，并静态检查 `solution.py` 的存在性、可读性、Python 语法和提交结构；默认不会执行文件。
 - `lc doctor --run-solution` 会额外运行语法有效的 `solution.py`，本地运行超过 10 秒会判定失败。
@@ -207,6 +209,9 @@ scripts/
   smoke_test.py wheel 与源码包发布验收
 .github/workflows/
   release.yml   跨平台验证、PyPI 发布与 GitHub Release
+PRODUCT_BOUNDARIES.md 产品边界与待定决策
+PROJECT_DESIGN.md     v1.0 长期架构设计
+SECURITY_REVIEW.md    当前未解决的安全与可靠性问题
 tests/
   test_auth.py
   test_cli.py
