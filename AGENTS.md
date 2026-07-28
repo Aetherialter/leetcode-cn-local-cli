@@ -14,12 +14,11 @@
 
 项目状态与行为发生冲突时，按以下顺序判断：
 
-1. `PRODUCT_BOUNDARIES.md` 中已经确认的产品边界。
+1. `docs/PRODUCT_BOUNDARIES.md` 中已经确认的产品边界。
 2. `docs/PROJECT_STATUS.md` 记录的当前实现状态。
 3. `docs/ARCHITECTURE.md` 记录的真实架构和依赖。
 4. `docs/DEVELOPMENT_PLAN.md` 记录的实施顺序。
-5. `PROJECT_DESIGN.md` 中尚未落地的长期设计方向。
-6. `ROADMAP.md` 中的历史路线草案。
+5. `docs/PROJECT_DESIGN.md` 中尚未落地的长期设计方向。
 
 # Development Philosophy
 
@@ -52,8 +51,8 @@
 还必须按任务范围检查：
 
 - `docs/TECH_DECISIONS.md`：已有技术选择、替代方案和开放决策。
-- `PRODUCT_BOUNDARIES.md`：用户可见行为是否已经确认。
-- `SECURITY_REVIEW.md`：任务是否涉及秘密、文件写入、执行、终端或远端接口风险。
+- `docs/PRODUCT_BOUNDARIES.md`：用户可见行为是否已经确认。
+- `docs/SECURITY_REVIEW.md`：任务是否涉及秘密、文件写入、执行、终端或远端接口风险。
 - `README.md`、相关源码、测试、配置和 CI：文档描述是否与真实实现一致。
 
 不得只根据文件名或历史计划推断现状。
@@ -70,7 +69,7 @@
 - 是否涉及文件系统、凭据、用户代码执行、网络请求、跨平台或发布风险。
 - 需要新增或调整哪些单元、集成、CLI、跨平台或手动验收测试。
 
-如果实现会碰到 `PRODUCT_BOUNDARIES.md` 中的待定项，必须先完成产品决策，不能让当前实现偶然冻结行为。
+如果实现会碰到 `docs/PRODUCT_BOUNDARIES.md` 中的待定项，必须先完成产品决策，不能让当前实现偶然冻结行为。
 
 ## 3. 提出方案
 
@@ -156,10 +155,10 @@ uv run lc --help
 根据改动范围，还应同步：
 
 - 用户可见命令、行为、限制或安装方式变化：更新 `README.md`。
-- 产品语义被确认或改变：更新 `PRODUCT_BOUNDARIES.md`。
-- 安全风险、缓解措施或剩余限制变化：更新 `SECURITY_REVIEW.md`。
-- 长期架构或 v1.0 范围变化：更新 `PROJECT_DESIGN.md`。
-- 发布版本：更新版本号、锁文件和对应版本的 Release Notes。
+- 产品语义被确认或改变：更新 `docs/PRODUCT_BOUNDARIES.md`。
+- 安全风险、缓解措施或剩余限制变化：更新 `docs/SECURITY_REVIEW.md`。
+- 长期架构或 v1.0 范围变化：更新 `docs/PROJECT_DESIGN.md`。
+- 发布版本：更新版本号、锁文件和 `docs/release-notes/` 中对应版本的 Release Notes。
 
 文档必须描述真实实现和真实验证结果，不得把计划、mock 验证或未运行的检查写成已完成。
 

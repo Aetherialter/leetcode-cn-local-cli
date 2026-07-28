@@ -109,7 +109,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release_notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+          release_notes="docs/release-notes/${GITHUB_REF_NAME}.md"
           release_title="$GITHUB_REF_NAME"
           notes_file=""
 

@@ -4,13 +4,13 @@
 
 当前发行版本：`v0.7.2`
 
-本文是项目长期开发上下文的状态入口，只记录已经由源码、测试和现有文档确认的事实。用户可见行为以 [README](../README.md) 和 [产品边界与待定决策](../PRODUCT_BOUNDARIES.md) 为准；安全问题以 [安全审计与修复清单](../SECURITY_REVIEW.md) 为准。
+本文是项目长期开发上下文的状态入口，只记录已经由源码、测试和现有文档确认的事实。用户可见行为以 [README](../README.md) 和 [产品边界与待定决策](PRODUCT_BOUNDARIES.md) 为准；安全问题以 [安全审计与修复清单](SECURITY_REVIEW.md) 为准。
 
 ## 当前项目目标
 
 当前产品是面向 LeetCode 中文站的轻量、在线优先、本地刷题 CLI。它复用浏览器或手动输入的登录 Cookie，在 CLI 启动目录维护单个 `solution.py`，支持题目查询、本地测试和远程提交，不以本地题库、数据库或多题目录为当前产品目标。
 
-[v1.0 总体设计大纲](../PROJECT_DESIGN.md)提出的长期目标是：在保持轻量 CLI 的同时，形成可复用的 Python 核心、稳定 Python API、中文站与国际站双站点支持，以及明确的配置、凭据和工作区边界。该文档仍处于 `Draft 0.2`，不能把其中尚未实施的接口视为当前能力。
+[v1.0 总体设计大纲](PROJECT_DESIGN.md)提出的长期目标是：在保持轻量 CLI 的同时，形成可复用的 Python 核心、稳定 Python API、中文站与国际站双站点支持，以及明确的配置、凭据和工作区边界。该文档仍处于 `Draft 0.2`，不能把其中尚未实施的接口视为当前能力。
 
 ## 已完成功能
 
@@ -38,6 +38,7 @@
 - 外部文本以纯文本方式交给 Rich，过滤 ANSI、OSC 和其他不安全终端控制字符。
 - Session 诊断结果不包含 Cookie 值；Cookie 域名使用标签边界匹配。
 - `lc solve` 只创建或覆盖普通 `solution.py`；符号链接、断链、目录、目录链接和 Windows reparse point 会在写入前被拒绝，并返回无 traceback 的 CLI 错误。
+- 项目文档集中维护在 `docs/`，由 `docs/README.md` 提供入口；旧 `ROADMAP.md` 已退出，开发路线只在 `DEVELOPMENT_PLAN.md` 维护。
 
 ## 当前开发阶段
 
@@ -75,7 +76,7 @@
 - 系统秘密存储不可用时是否以及如何显式降级。
 - 合法空分页、Broken Pipe 和受支持 Python 小版本的行为。
 
-完整清单见 [产品边界与待定决策](../PRODUCT_BOUNDARIES.md)。
+完整清单见 [产品边界与待定决策](PRODUCT_BOUNDARIES.md)。
 
 ### 长期架构任务
 
@@ -108,13 +109,13 @@
 - `service.py` 直接导入 `typer.Exit` 和 UI 函数，应用流程尚不能作为独立库复用。
 - CLI 命令并未统一通过 service 或未来公开 API，存在多条编排路径。
 - 当前 GitHub Actions 只在 `v*` 标签推送时运行，普通分支和 Pull Request 缺少持续验证。
-- [ROADMAP](../ROADMAP.md)与较新的 [PROJECT_DESIGN](../PROJECT_DESIGN.md)对 `v0.9` 以后的版本内容不一致，需要在继续排期前统一。
+- 项目文档已集中到 `docs/`，未来实施路线以 `DEVELOPMENT_PLAN.md` 为唯一入口，长期目标以 `PROJECT_DESIGN.md` 为准。
 
 ## 下一步计划
 
 1. 拍板 `PB-005`，明确失败时是否字节级保留原文件、是否使用同目录随机临时文件和原子替换，再完成工作区写入事务。
 2. 按 `PB-001`、`PB-003`、`PB-006`、`PB-002`、`PB-004` 的顺序明确测试、提交、编码和输出语义。
 3. 为普通 push 和 Pull Request 增加日常 CI，把标签工作流保留为发布门禁。
-4. 统一路线文档后开始 `v0.8`：显式运行上下文、配置边界、最小 `lc init`、秘密存储入口和旧 Session 迁移。
+4. 开始 `v0.8`：显式运行上下文、配置边界、最小 `lc init`、秘密存储入口和旧 Session 迁移。
 
 每完成一个功能，应同步更新本文的基线、已完成功能、开放问题和下一步计划。

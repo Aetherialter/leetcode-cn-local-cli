@@ -6,11 +6,11 @@
 
 ## 长期开发手册
 
-[v1.0 总体设计大纲](PROJECT_DESIGN.md)记录了从当前版本演进到稳定 CLI 与 Python API 的长期架构、版本阶段和验收标准。该文档目前处于 Draft 状态，具体实施前仍需按阶段审查。
+[完整文档索引](docs/README.md)集中列出项目状态、架构、产品边界、技术决策、开发计划、安全审计和发布手册。
 
-[产品边界与待定决策](PRODUCT_BOUNDARIES.md)记录当前已经确认的行为，以及必须先由维护者拍板才能实现的测试、提交、工作区、编辑器和兼容性语义。
+[v1.0 总体设计大纲](docs/PROJECT_DESIGN.md)记录了从当前版本演进到稳定 CLI 与 Python API 的长期架构、版本阶段和验收标准。该文档目前处于 Draft 状态，具体实施前仍需按阶段审查。
 
-[安全审计与修复清单](SECURITY_REVIEW.md)记录了当前源码的风险等级、攻击前提和建议修复顺序；其中列出的问题尚未全部修复。
+[产品边界与待定决策](docs/PRODUCT_BOUNDARIES.md)记录当前已经确认的行为，以及必须先由维护者拍板才能实现的测试、提交、工作区、编辑器和兼容性语义。[安全审计与修复清单](docs/SECURITY_REVIEW.md)记录当前源码仍需处理的风险。
 
 ## 核心能力
 
@@ -190,7 +190,7 @@ uv run lc test
 uv run ruff check solution.py
 ```
 
-维护者发布流程见 [RELEASING.md](https://github.com/Aetherialter/leetcode-local-cli/blob/main/RELEASING.md)。标签触发的发布工作流会在 Linux、macOS 和 Windows 上验收安装器，分别验证 wheel 与源码包，通过 PyPI Trusted Publisher 上传发行包，并创建 GitHub Release。
+维护者发布流程见 [发布手册](docs/RELEASING.md)。标签触发的发布工作流会在 Linux、macOS 和 Windows 上验收安装器，分别验证 wheel 与源码包，通过 PyPI Trusted Publisher 上传发行包，并创建 GitHub Release。
 
 ## 项目结构
 
@@ -211,9 +211,17 @@ scripts/
   smoke_test.py wheel 与源码包发布验收
 .github/workflows/
   release.yml   跨平台验证、PyPI 发布与 GitHub Release
-PRODUCT_BOUNDARIES.md 产品边界与待定决策
-PROJECT_DESIGN.md     v1.0 长期架构设计
-SECURITY_REVIEW.md    当前未解决的安全与可靠性问题
+docs/
+  README.md            文档索引与权威顺序
+  PROJECT_STATUS.md    当前实现状态
+  ARCHITECTURE.md      当前架构与数据流
+  PRODUCT_BOUNDARIES.md 已确认边界与待定决策
+  TECH_DECISIONS.md    技术决策记录
+  DEVELOPMENT_PLAN.md  唯一长期开发路线
+  PROJECT_DESIGN.md    v1.0 长期架构设计
+  SECURITY_REVIEW.md   当前安全与可靠性问题
+  RELEASING.md         发布流程
+  release-notes/       版本化发布说明
 tests/
   test_auth.py
   test_cli.py
@@ -238,9 +246,10 @@ tests/
 - `v0.7.0`: uv 全局工具安装、跨平台引导脚本和 PyPI Trusted Publisher 发布流程。
 - `v0.7.1`: 修正安装版 CLI 的命令建议，并引入版本化 GitHub Release Notes。
 - `v0.7.2`: 收紧安全边界，避免诊断命令默认执行解题文件，并移除安装器的远端脚本执行。
-- `v0.8`: `lc init` 与正式工作区管理。
-- `v0.9`: 轻量缓存。
-- `v0.10`: 样例提取原型。
+- `v0.8`: 运行上下文、配置与工作区基础。
+- `v0.9`: 领域模型、异常与 Python API 预览。
+- `v0.10`: 双站点客户端与独立账号体系。
+- 后续版本：CLI 迁移、题面与 UI、源码收口和发布加固，详见[长期开发计划](docs/DEVELOPMENT_PLAN.md)。
 - `v1.0`: 稳定轻量 CLI。
 
 ## License

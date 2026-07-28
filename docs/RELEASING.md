@@ -18,7 +18,7 @@
 
 ## Release Notes
 
-每个正式版本在 `.github/release-notes/vX.Y.Z.md` 中维护发布说明。文件第一行是 GitHub Release 标题，第二行留空，其余内容是 Release 正文。
+每个正式版本在 `docs/release-notes/vX.Y.Z.md` 中维护发布说明。文件第一行是 GitHub Release 标题，第二行留空，其余内容是 Release 正文。
 
 发布工作流会优先使用与标签同名的说明文件；文件缺失时才回退到 GitHub 自动生成的 Release Notes。重跑已创建 Release 的任务时，工作流会使用版本化文件更新标题和正文。
 
