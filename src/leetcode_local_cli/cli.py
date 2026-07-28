@@ -33,6 +33,7 @@ from leetcode_local_cli.service import (
 from leetcode_local_cli.workspace import (
     ProblemMetadata,
     SolutionFileStatus,
+    WorkspaceError,
     inspect_solution_file,
     run_solution_file,
     write_solution_file,
@@ -158,15 +159,19 @@ def solve(question_id: str) -> None:
     ):
         error("题目元信息不完整，无法生成可提交的 solution.py")
         raise Exit(1)
-    write_solution_file(
-        problem_detail.python_code,
-        ProblemMetadata(
-            problem_id=problem_detail.question_id,
-            submit_question_id=problem_detail.submit_question_id,
-            title=problem_detail.title,
-            title_slug=problem_detail.title_slug,
-        ),
-    )
+    try:
+        write_solution_file(
+            problem_detail.python_code,
+            ProblemMetadata(
+                problem_id=problem_detail.question_id,
+                submit_question_id=problem_detail.submit_question_id,
+                title=problem_detail.title,
+                title_slug=problem_detail.title_slug,
+            ),
+        )
+    except WorkspaceError as exc:
+        error(str(exc))
+        raise Exit(1)
 
 
 @app.command()

@@ -54,7 +54,7 @@ flowchart TD
 | `auth.py` | 读取 Chrome Cookie、解析手动 Cookie、保存/迁移/检查 Session | 只支持 `leetcode.cn`；默认路径在导入时由当前目录确定 |
 | `client.py` | 封装中文站 HTTP、GraphQL、提交与判题查询 | 同步 `httpx.Client`；固定中文站和 Python3；使用 `ClientResult` 返回错误分类 |
 | `problem.py` | 题号解析、题目摘要和详情模型、远端数据标准化 | 基本不依赖 CLI 或 IO，是当前最接近纯领域逻辑的模块 |
-| `workspace.py` | 构建模板、写入和打开 `solution.py`、运行子进程、解析提交 marker、静态检查 | 默认路径在导入时确定；写入安全和错误边界尚未完成 |
+| `workspace.py` | 构建模板、校验并写入和打开 `solution.py`、运行子进程、解析提交 marker、静态检查 | 默认路径在导入时确定；已拒绝静态可识别的非普通写入目标，完整事务安全尚未完成 |
 
 ## 核心数据流
 
@@ -91,7 +91,10 @@ Session 当前默认写到 CLI 启动目录的 `.leetcode_local_cli/session.json
 3. 找到 `titleSlug` 后请求题目详情。
 4. `problem.py` 把远端字典标准化为 `ProblemDetail`，同时保留展示题号和内部提交 ID。
 5. `lc get` 把详情交给 UI；`lc solve` 额外构建 `ProblemMetadata` 并调用 workspace。
-6. workspace 生成模板，覆盖当前目录的普通 `solution.py`，然后尝试通过系统关联打开文件。
+6. workspace 生成模板，并使用不跟随链接的 `lstat()` 检查 `solution.py` 目录项：目标不存在时允许创建，普通文件允许覆盖，符号链接、断链、目录和 Windows reparse point 会在写入前被拒绝。
+7. 写入成功后才尝试通过系统关联打开文件；校验或写入失败由 CLI 映射为清晰错误和非零退出码。
+
+当前校验阻断了预先存在的非普通目标，但检查与直接打开写入之间仍存在时间窗口。随机临时文件、排他创建、原子替换和失败时保留旧文件属于 `PB-005` 尚待确认和实施的事务边界。
 
 ### 本地测试
 

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
+import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 
@@ -92,16 +94,42 @@ def build_solution_content(python_code: str, metadata: ProblemMetadata) -> str:
     )
 
 
+def _is_windows_reparse_point(file_status: object) -> bool:
+    reparse_point_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    file_attributes = getattr(file_status, "st_file_attributes", 0)
+    return bool(reparse_point_flag and file_attributes & reparse_point_flag)
+
+
+def _validate_solution_write_target(path: Path) -> None:
+    try:
+        file_status = path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise WorkspaceError("无法检查 solution.py 写入目标，请检查路径权限") from exc
+
+    if stat.S_ISLNK(file_status.st_mode):
+        raise WorkspaceError("solution.py 是符号链接或断链，已拒绝写入")
+    if _is_windows_reparse_point(file_status):
+        raise WorkspaceError("solution.py 是 Windows reparse point，已拒绝写入")
+    if stat.S_ISDIR(file_status.st_mode):
+        raise WorkspaceError("solution.py 是目录，已拒绝写入")
+    if not stat.S_ISREG(file_status.st_mode):
+        raise WorkspaceError("solution.py 不是普通文件，已拒绝写入")
+
+
 def write_solution_file(python_code: str, metadata: ProblemMetadata) -> None:
-    with open(SOLUTION_FILE, "w", encoding="utf-8") as file:
-        file.write(build_solution_content(python_code, metadata))
+    _validate_solution_write_target(SOLUTION_FILE)
+    try:
+        with open(SOLUTION_FILE, "w", encoding="utf-8") as file:
+            file.write(build_solution_content(python_code, metadata))
+    except OSError as exc:
+        raise WorkspaceError("无法写入 solution.py，请检查文件权限或占用状态") from exc
     open_path(SOLUTION_FILE)
 
 
 def open_path(path: Path) -> None:
     if sys.platform == "win32":
-        import os
-
         os.startfile(path)
         return
 

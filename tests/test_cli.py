@@ -6,7 +6,12 @@ from typer.testing import CliRunner
 
 from leetcode_local_cli import cli
 from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
-from leetcode_local_cli.workspace import SolutionFileInspection, SolutionFileStatus
+from leetcode_local_cli.problem import ProblemDetail
+from leetcode_local_cli.workspace import (
+    SolutionFileInspection,
+    SolutionFileStatus,
+    WorkspaceError,
+)
 
 
 runner = CliRunner()
@@ -89,6 +94,38 @@ def test_doctor_command_exits_nonzero_for_failed_report(monkeypatch) -> None:
     result = runner.invoke(cli.app, ["doctor"])
 
     assert result.exit_code == 1
+
+
+def test_solve_command_reports_rejected_workspace_target(monkeypatch) -> None:
+    problem = ProblemDetail(
+        question_id="1",
+        submit_question_id="1",
+        title="Two Sum",
+        title_slug="two-sum",
+        difficulty="Easy",
+        tags=["Array"],
+        content_html="<p>content</p>",
+        python_code="class Solution:\n    pass",
+    )
+    monkeypatch.setattr(
+        cli,
+        "get_problem_detail_by_question_id",
+        lambda question_id: problem,
+    )
+    monkeypatch.setattr(cli, "render_problem_detail", lambda problem: None)
+    monkeypatch.setattr(
+        cli,
+        "write_solution_file",
+        lambda python_code, metadata: (_ for _ in ()).throw(
+            WorkspaceError("solution.py 是符号链接或断链，已拒绝写入")
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["solve", "1"])
+
+    assert result.exit_code == 1
+    assert "符号链接或断链" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_test_command_reports_missing_solution_without_running(monkeypatch) -> None:

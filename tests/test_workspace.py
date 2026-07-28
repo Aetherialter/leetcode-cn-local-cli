@@ -1,3 +1,8 @@
+import os
+import stat
+import subprocess
+from types import SimpleNamespace
+
 import pytest
 
 from leetcode_local_cli import workspace
@@ -58,6 +63,178 @@ def test_build_solution_content_does_not_duplicate_existing_pass() -> None:
 
     assert "pass pass" not in content
     compile(content, "solution.py", "exec")
+
+
+@pytest.mark.parametrize("existing_content", [None, "previous solution"])
+def test_write_solution_file_creates_or_overwrites_regular_file(
+    tmp_path,
+    monkeypatch,
+    existing_content,
+) -> None:
+    solution_file = tmp_path / "solution.py"
+    if existing_content is not None:
+        solution_file.write_text(existing_content, encoding="utf-8")
+    opened_paths = []
+    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
+    monkeypatch.setattr(workspace, "open_path", opened_paths.append)
+
+    workspace.write_solution_file(
+        "class Solution:\n    pass",
+        ProblemMetadata("1", "1", "Two Sum", "two-sum"),
+    )
+
+    content = solution_file.read_text(encoding="utf-8")
+    assert existing_content is None or existing_content not in content
+    assert "class Solution:\n    pass" in content
+    assert opened_paths == [solution_file]
+
+
+@pytest.mark.parametrize("target_exists", [True, False])
+def test_write_solution_file_rejects_existing_and_broken_symlinks(
+    tmp_path,
+    monkeypatch,
+    target_exists,
+) -> None:
+    target = tmp_path / "outside.py"
+    if target_exists:
+        target.write_text("must remain unchanged", encoding="utf-8")
+    solution_file = tmp_path / "solution.py"
+    try:
+        solution_file.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symbolic links are unavailable: {exc}")
+    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
+    monkeypatch.setattr(
+        workspace,
+        "open_path",
+        lambda path: pytest.fail("rejected target must not be opened"),
+    )
+
+    with pytest.raises(WorkspaceError, match="符号链接或断链"):
+        workspace.write_solution_file(
+            "class Solution:\n    pass",
+            ProblemMetadata("1", "1", "Two Sum", "two-sum"),
+        )
+
+    assert solution_file.is_symlink()
+    if target_exists:
+        assert target.read_text(encoding="utf-8") == "must remain unchanged"
+    else:
+        assert not target.exists()
+
+
+def test_write_solution_file_rejects_directory_symlink(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    target_directory = tmp_path / "outside-directory"
+    target_directory.mkdir()
+    solution_file = tmp_path / "solution.py"
+    try:
+        solution_file.symlink_to(target_directory, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symbolic links are unavailable: {exc}")
+    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
+    monkeypatch.setattr(
+        workspace,
+        "open_path",
+        lambda path: pytest.fail("rejected target must not be opened"),
+    )
+
+    with pytest.raises(WorkspaceError, match="符号链接或断链"):
+        workspace.write_solution_file(
+            "class Solution:\n    pass",
+            ProblemMetadata("1", "1", "Two Sum", "two-sum"),
+        )
+
+    assert solution_file.is_symlink()
+    assert list(target_directory.iterdir()) == []
+
+
+def test_write_solution_file_rejects_directory(tmp_path, monkeypatch) -> None:
+    solution_file = tmp_path / "solution.py"
+    solution_file.mkdir()
+    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
+    monkeypatch.setattr(
+        workspace,
+        "open_path",
+        lambda path: pytest.fail("rejected target must not be opened"),
+    )
+
+    with pytest.raises(WorkspaceError, match="是目录"):
+        workspace.write_solution_file(
+            "class Solution:\n    pass",
+            ProblemMetadata("1", "1", "Two Sum", "two-sum"),
+        )
+
+    assert solution_file.is_dir()
+
+
+def test_windows_reparse_point_attribute_is_rejected(monkeypatch) -> None:
+    monkeypatch.setattr(
+        stat,
+        "FILE_ATTRIBUTE_REPARSE_POINT",
+        0x400,
+        raising=False,
+    )
+    file_status = SimpleNamespace(st_file_attributes=0x400)
+
+    assert workspace._is_windows_reparse_point(file_status)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="junctions are Windows-specific")
+def test_write_solution_file_rejects_windows_junction(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    target_directory = tmp_path / "junction-target"
+    target_directory.mkdir()
+    junction = tmp_path / "solution.py"
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(target_directory)],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode:
+        pytest.skip(f"could not create test junction: {result.stderr}")
+    assert junction.is_junction()
+    monkeypatch.setattr(workspace, "SOLUTION_FILE", junction)
+    monkeypatch.setattr(
+        workspace,
+        "open_path",
+        lambda path: pytest.fail("rejected target must not be opened"),
+    )
+
+    with pytest.raises(WorkspaceError, match="reparse point"):
+        workspace.write_solution_file(
+            "class Solution:\n    pass",
+            ProblemMetadata("1", "1", "Two Sum", "two-sum"),
+        )
+
+    assert junction.is_junction()
+    assert list(target_directory.iterdir()) == []
+
+
+def test_write_solution_file_wraps_write_errors(tmp_path, monkeypatch) -> None:
+    solution_file = tmp_path / "solution.py"
+    solution_file.write_text("previous solution", encoding="utf-8")
+    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda *args, **kwargs: (_ for _ in ()).throw(PermissionError),
+    )
+    monkeypatch.setattr(
+        workspace,
+        "open_path",
+        lambda path: pytest.fail("failed write must not be opened"),
+    )
+
+    with pytest.raises(WorkspaceError, match="无法写入 solution.py"):
+        workspace.write_solution_file(
+            "class Solution:\n    pass",
+            ProblemMetadata("1", "1", "Two Sum", "two-sum"),
+        )
 
 
 def test_parse_solution_submission_reads_metadata_and_submit_code(

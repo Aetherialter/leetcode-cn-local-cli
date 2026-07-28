@@ -93,7 +93,9 @@ lc submit
 
 ## solution.py 规则
 
-`lc solve` 会覆盖当前目录的 `solution.py`。切换题目前请自行保存当前解法。
+`lc solve` 会创建不存在的 `solution.py`，也会覆盖当前目录中的普通 `solution.py`。切换题目前请自行保存当前解法。
+
+如果同名路径是符号链接、断链、目录、目录链接、Windows junction 或其他 reparse point，命令会拒绝写入并以非零状态退出，不会打开该目标。
 
 生成文件会包含题目元信息和提交区域：
 
@@ -129,7 +131,7 @@ class Solution:
 - 当前远程提交仅支持 Python3。
 - 当前只维护 CLI 启动目录中的单个 `solution.py`，不会生成每题独立目录。
 - 当前不保存完整题面到本地，也不引入本地数据库。
-- `lc solve` 会强制覆盖 `solution.py`。
+- `lc solve` 会强制覆盖普通 `solution.py`，但拒绝符号链接、断链、目录、目录链接和 Windows reparse point。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
 - `lc test` 默认隐藏 Python traceback，只展示本地测试通过或失败。
 - 当前 `lc test` 执行整个 `solution.py`，不验证或主动调用 `run_cases()`；缺少该函数的非空脚本可能显示通过，此行为正在重新定界。

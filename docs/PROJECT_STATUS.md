@@ -37,6 +37,7 @@
 - 标签触发的 GitHub Actions 在三种操作系统上验证代码、测试、构建和安装器，再通过 PyPI Trusted Publisher 发布。
 - 外部文本以纯文本方式交给 Rich，过滤 ANSI、OSC 和其他不安全终端控制字符。
 - Session 诊断结果不包含 Cookie 值；Cookie 域名使用标签边界匹配。
+- `lc solve` 只创建或覆盖普通 `solution.py`；符号链接、断链、目录、目录链接和 Windows reparse point 会在写入前被拒绝，并返回无 traceback 的 CLI 错误。
 
 ## 当前开发阶段
 
@@ -49,14 +50,14 @@
 - `uv run ruff format --check src tests scripts`：通过，22 个文件已格式化。
 - `uv run ruff check src tests scripts pyproject.toml`：通过。
 - `uv run pyright src tests scripts`：通过，0 errors。
-- `uv run pytest -q`：137 passed，7 skipped；当前 Windows 环境跳过 POSIX/Bash 专项测试。
+- `uv run pytest -q`：144 passed，10 skipped；当前 Windows 环境跳过 7 项 POSIX/Bash 专项测试，并因系统未授予符号链接权限跳过 3 项链接测试；实际 Windows junction 测试通过。
 - `uv run lc --version` 和 `uv run lc --help`：通过。
+- 从本地 wheel 隔离执行 `uv tool install` 后，安装版 `lc --version` 和已安装包的普通文件创建、目录目标拒绝验证通过。
 
 ## 未完成任务
 
 ### 已确认但尚未实现
 
-- 拒绝 `solution.py` 的符号链接、断链、目录、目录链接和 Windows reparse point 写入目标。
 - 将用户配置、凭据和工作区路径解耦。
 - 移除模块导入时固定 `Path.cwd()` 的路径状态。
 - 将工作区明文 Cookie 迁移到跨平台用户配置与系统秘密存储边界。
@@ -91,14 +92,14 @@
 
 - `SR-002`：Cookie 以明文 JSON 保存在 CLI 启动目录，存在误提交、同步和共享泄露风险。
 - `SR-003`：`solve` 通过系统文件关联打开 `.py`；Windows 上文件关联可能不是编辑器。该风险当前已被产品接受，等待显式编辑器配置替代。
-- `SR-004`：工作区和 Session 固定临时文件写入会跟随链接目标，可能覆盖工作区以外、但当前用户有权写入的文件。
+- `SR-004`：`solution.py` 已拒绝静态可识别的非普通目标，但 `lstat()` 与直接写入之间仍有竞争窗口，且尚未实现原子替换；Session 固定临时文件写入仍会跟随链接目标。
 
 ### 行为与可靠性
 
 - 非空且语法合法、但没有有效测试入口的脚本可能被 `lc test` 判定为通过。
 - `lc test` 没有超时，而 Doctor 的显式执行有 10 秒超时。
 - 非 Accepted 判题和轮询超时可能仍以进程退出码 0 结束。
-- 非 UTF-8 解题文件、只读文件和 Windows 独占锁的异常还没有统一转换为用户可操作的信息。
+- `lc solve` 的权限、占用等写入异常已转换为工作区错误；非 UTF-8 解题文件和完整的失败后旧文件保证仍未收敛。
 - 极大但合法的分页偏移和 Broken Pipe 行为尚未定界。
 
 ### 架构与维护
@@ -111,10 +112,9 @@
 
 ## 下一步计划
 
-1. 以 `SR-004` 的第一阶段作为下一个开发功能：在保持普通 `solution.py` 可覆盖的前提下，拒绝所有非普通写入目标。
-2. 在实施完整写入事务前，拍板 `PB-005`，明确失败时是否字节级保留原文件、是否使用同目录随机临时文件和原子替换。
-3. 按 `PB-001`、`PB-003`、`PB-006`、`PB-002`、`PB-004` 的顺序明确测试、提交、编码和输出语义。
-4. 为普通 push 和 Pull Request 增加日常 CI，把标签工作流保留为发布门禁。
-5. 统一路线文档后开始 `v0.8`：显式运行上下文、配置边界、最小 `lc init`、秘密存储入口和旧 Session 迁移。
+1. 拍板 `PB-005`，明确失败时是否字节级保留原文件、是否使用同目录随机临时文件和原子替换，再完成工作区写入事务。
+2. 按 `PB-001`、`PB-003`、`PB-006`、`PB-002`、`PB-004` 的顺序明确测试、提交、编码和输出语义。
+3. 为普通 push 和 Pull Request 增加日常 CI，把标签工作流保留为发布门禁。
+4. 统一路线文档后开始 `v0.8`：显式运行上下文、配置边界、最小 `lc init`、秘密存储入口和旧 Session 迁移。
 
 每完成一个功能，应同步更新本文的基线、已完成功能、开放问题和下一步计划。
