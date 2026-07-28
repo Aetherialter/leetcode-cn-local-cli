@@ -150,6 +150,8 @@ class Solution:
 
 该文件可能包含敏感 Cookie 信息，已在 `.gitignore` 中忽略。v0.7 首次读取登录态时会把旧版 `.aether_lc/session.json` 自动迁移到新目录；迁移过程不会输出 Cookie 值。发布前请确认仓库根目录的 `solution.py` 为空，避免把个人解法提交到公开仓库。
 
+仓库还会忽略常见个人编辑器目录、`.env*` 和常见凭据 JSON 文件名，并通过测试检查已跟踪 JSON 中的高风险秘密字段。不要使用 `git add -f` 强制添加这些文件；提交前仍应检查 `git status`，因为 `.gitignore` 不能替代秘密扫描，也不能保护已经被跟踪的文件。
+
 ## 登录态说明
 
 `leetcode-local-cli` 会把浏览器 Cookie 的本地副本保存到 CLI 启动目录下的 `.leetcode_local_cli/session.json`。本地保存的 Cookie 不会延长 LeetCode 登录态有效期；实际是否有效以 LeetCode 服务端验证为准。v0.8 的 `lc init` 会进一步将用户登录态与工作区分离。

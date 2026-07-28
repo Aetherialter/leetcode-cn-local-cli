@@ -1,6 +1,6 @@
 # 项目状态
 
-最近更新：2026-07-28
+最近更新：2026-07-29
 
 当前发行版本：`v0.7.2`
 
@@ -39,6 +39,7 @@
 - Session 诊断结果不包含 Cookie 值；Cookie 域名使用标签边界匹配。
 - `lc solve` 只创建或覆盖普通 `solution.py`；符号链接、断链、目录、目录链接和 Windows reparse point 会在写入前被拒绝，并返回无 traceback 的 CLI 错误。
 - 项目文档集中维护在 `docs/`，由 `docs/README.md` 提供入口；旧 `ROADMAP.md` 已退出，开发路线只在 `DEVELOPMENT_PLAN.md` 维护。
+- 个人编辑器与本地 AI 工具目录、环境文件和常见凭据 JSON 文件名由 `.gitignore` 排除；仓库测试同时检查代表性规则和已跟踪 JSON 的高风险秘密字段。
 
 ## 当前开发阶段
 
@@ -46,12 +47,12 @@
 
 当前版本已经形成“登录 → 查询 → 生成 → 本地测试 → 提交 → 诊断”的主流程，但还没有达到长期设计所要求的可复用 Python 核心。当前主要工作不是继续增加表层命令，而是处理已知安全问题、拍板尚未确定的行为语义，并消除路径、界面和业务逻辑之间的耦合。
 
-2026-07-28 的本地基线结果：
+2026-07-29 的本地基线结果：
 
-- `uv run ruff format --check src tests scripts`：通过，22 个文件已格式化。
+- `uv run ruff format --check src tests scripts`：通过，23 个文件已格式化。
 - `uv run ruff check src tests scripts pyproject.toml`：通过。
 - `uv run pyright src tests scripts`：通过，0 errors。
-- `uv run pytest -q`：144 passed，10 skipped；当前 Windows 环境跳过 7 项 POSIX/Bash 专项测试，并因系统未授予符号链接权限跳过 3 项链接测试；实际 Windows junction 测试通过。
+- `uv run pytest -q`：161 passed，10 skipped；当前 Windows 环境跳过 7 项 POSIX/Bash 专项测试，并因系统未授予符号链接权限跳过 3 项链接测试；实际 Windows junction 测试通过。
 - `uv run lc --version` 和 `uv run lc --help`：通过。
 - 从本地 wheel 隔离执行 `uv tool install` 后，安装版 `lc --version` 和已安装包的普通文件创建、目录目标拒绝验证通过。
 

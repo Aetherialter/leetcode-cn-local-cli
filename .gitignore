@@ -13,14 +13,46 @@ htmlcov/
 # Virtual environments
 .venv/
 
+# Personal editors and local AI tools
+.zed/
+.idea/
+.vscode/
+.cursor/
+.codex/
+*.code-workspace
+
+# Operating system and editor temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
 # Local secrets and runtime state
 .leetcode_local_cli/
 # Keep the pre-v0.7 path ignored so an interrupted migration cannot expose cookies.
 .aether_lc/
 
+# Common personal credential JSON names. Do not ignore all JSON files because
+# legitimate project configuration and test fixtures may also use JSON.
+credentials.json
+credentials.*.json
+*-credentials.json
+*_credentials.json
+client_secret*.json
+client-secret*.json
+service-account*.json
+service_account*.json
+secrets.json
+secrets.*.json
+*.secret.json
+*.secrets.json
+
 # Local environment files
 .env
 .env.*
+!.env.example
 
 # Local logs
 *.log

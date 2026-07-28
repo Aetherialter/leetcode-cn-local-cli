@@ -2,7 +2,7 @@
 
 初次审计日期：2026-07-20
 
-最近更新：2026-07-28
+最近更新：2026-07-29
 
 审计范围：`src/`、安装脚本、发布工作流、当前运行时依赖，以及 v0.7.2 Windows/Linux 跨平台测试报告
 
@@ -122,6 +122,7 @@ Session 路径位于 `auth.save_session()`：
 - 手动 Cookie 输入不回显。
 - Doctor 和普通错误输出不包含 Cookie 值。
 - `.leetcode_local_cli/` 与旧 `.aether_lc/` 已在当前仓库忽略。
+- 常见个人编辑器目录、环境文件和凭据 JSON 文件名已被忽略；测试会检查代表性 ignore 规则，并扫描已跟踪 JSON 的高风险秘密字段而不输出字段值。
 - 当前 Git 历史未发现真实 Session 文件。
 - GitHub Actions 的第三方 Action 固定到提交 SHA。
 - PyPI 发布使用 OIDC Trusted Publisher，不保存 PyPI Token。
@@ -132,7 +133,7 @@ Session 路径位于 `auth.save_session()`：
 
 - `pip-audit`：当前解析环境未发现已知依赖漏洞。
 - Bandit：报告 17 项低危提示，主要涉及子进程、断言和宽泛异常；人工审计发现了上述更高等级的业务逻辑风险。
-- Ruff、Pyright 和现有 pytest 通过；当前结果为 144 passed、10 skipped，其中 Windows junction 实际测试通过，3 项符号链接测试因当前主机缺少创建权限而跳过。
+- Ruff、Pyright 和现有 pytest 通过；当前结果为 161 passed、10 skipped，其中 Windows junction 实际测试通过，3 项符号链接测试因当前主机缺少创建权限而跳过。
 - 本地 wheel 经隔离 `uv tool install` 后，安装版版本入口和工作区目标校验通过。
 
 自动化扫描结果只代表其规则和漏洞数据库覆盖范围，不能替代业务逻辑审查。
