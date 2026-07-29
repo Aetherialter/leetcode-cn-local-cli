@@ -2,13 +2,10 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 from pathlib import Path
-import stat
 import subprocess
 import sys
 
-
-PROJECT_ROOT = Path.cwd()
-SOLUTION_FILE = PROJECT_ROOT / "solution.py"
+from leetcode_local_cli.safe_files import SafeFileError, atomic_write_text
 
 METADATA_PREFIX = "# @lc "
 START_FLAG = "# @lc submit_begin"
@@ -94,38 +91,20 @@ def build_solution_content(python_code: str, metadata: ProblemMetadata) -> str:
     )
 
 
-def _is_windows_reparse_point(file_status: object) -> bool:
-    reparse_point_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    file_attributes = getattr(file_status, "st_file_attributes", 0)
-    return bool(reparse_point_flag and file_attributes & reparse_point_flag)
-
-
-def _validate_solution_write_target(path: Path) -> None:
+def write_solution_file(
+    path: Path,
+    python_code: str,
+    metadata: ProblemMetadata,
+) -> None:
     try:
-        file_status = path.lstat()
-    except FileNotFoundError:
-        return
-    except OSError as exc:
-        raise WorkspaceError("无法检查 solution.py 写入目标，请检查路径权限") from exc
-
-    if stat.S_ISLNK(file_status.st_mode):
-        raise WorkspaceError("solution.py 是符号链接或断链，已拒绝写入")
-    if _is_windows_reparse_point(file_status):
-        raise WorkspaceError("solution.py 是 Windows reparse point，已拒绝写入")
-    if stat.S_ISDIR(file_status.st_mode):
-        raise WorkspaceError("solution.py 是目录，已拒绝写入")
-    if not stat.S_ISREG(file_status.st_mode):
-        raise WorkspaceError("solution.py 不是普通文件，已拒绝写入")
-
-
-def write_solution_file(python_code: str, metadata: ProblemMetadata) -> None:
-    _validate_solution_write_target(SOLUTION_FILE)
-    try:
-        with open(SOLUTION_FILE, "w", encoding="utf-8") as file:
-            file.write(build_solution_content(python_code, metadata))
-    except OSError as exc:
-        raise WorkspaceError("无法写入 solution.py，请检查文件权限或占用状态") from exc
-    open_path(SOLUTION_FILE)
+        atomic_write_text(
+            path,
+            build_solution_content(python_code, metadata),
+            label="solution.py",
+        )
+    except SafeFileError as exc:
+        raise WorkspaceError(str(exc)) from exc
+    open_path(path)
 
 
 def open_path(path: Path) -> None:
@@ -145,16 +124,15 @@ def open_path(path: Path) -> None:
 
 
 def run_solution_file(
-    path: Path | None = None,
+    path: Path,
     *,
     timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    solution_file = path or SOLUTION_FILE
     return subprocess.run(
-        [sys.executable, str(solution_file)],
+        [sys.executable, str(path)],
         capture_output=True,
         text=True,
-        cwd=PROJECT_ROOT,
+        cwd=path.parent,
         timeout=timeout,
     )
 
@@ -208,12 +186,9 @@ def _parse_solution_submission_content(content: str) -> tuple[ProblemMetadata, s
     )
 
 
-def parse_solution_submission(
-    path: Path | None = None,
-) -> tuple[ProblemMetadata, str]:
-    solution_file = path or SOLUTION_FILE
+def parse_solution_submission(path: Path) -> tuple[ProblemMetadata, str]:
     try:
-        content = solution_file.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
         raise WorkspaceError("未找到 solution.py，请先执行 lc solve <题号>") from exc
     except OSError as exc:
@@ -221,10 +196,9 @@ def parse_solution_submission(
     return _parse_solution_submission_content(content)
 
 
-def inspect_solution_file(path: Path | None = None) -> SolutionFileInspection:
-    solution_file = path or SOLUTION_FILE
+def inspect_solution_file(path: Path) -> SolutionFileInspection:
     try:
-        content = solution_file.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return SolutionFileInspection(status=SolutionFileStatus.MISSING)
     except OSError:
@@ -234,7 +208,7 @@ def inspect_solution_file(path: Path | None = None) -> SolutionFileInspection:
         return SolutionFileInspection(status=SolutionFileStatus.EMPTY)
 
     try:
-        compile(content, str(solution_file), "exec")
+        compile(content, str(path), "exec")
     except SyntaxError as exc:
         return SolutionFileInspection(
             status=SolutionFileStatus.INVALID_SYNTAX,

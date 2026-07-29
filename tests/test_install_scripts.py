@@ -98,6 +98,8 @@ def test_shell_installer_uses_existing_uv_and_verifies_lc(tmp_path) -> None:
         "tool dir --bin",
     ]
     assert "安装成功：leetcode-local-cli 9.9.9" in result.stdout
+    assert "当前环境不可交互，已跳过工作区配置" in result.stdout
+    assert " init" in result.stdout
 
 
 @REQUIRES_POSIX_SHELL
@@ -192,6 +194,9 @@ def test_powershell_installer_declares_same_install_contract() -> None:
     assert "tool install --force" in content
     assert "tool update-shell" in content
     assert "--version" in content
+    assert "LEETCODE_LOCAL_CLI_NO_INIT" in content
+    assert "& $LcPath init" in content
+    assert "IsInputRedirected" in content
     assert 'IndexOf("http://"' in content
     assert "Invoke-WebRequest" not in content
     assert "Invoke-Expression" not in content
@@ -205,6 +210,7 @@ def test_installers_require_preinstalled_uv_without_remote_bootstrap() -> None:
         assert "https://docs.astral.sh/uv/" in content
         assert "LEETCODE_LOCAL_CLI_UV_INSTALL_URL" not in content
         assert "astral.sh/uv/install" not in content
+        assert "LEETCODE_LOCAL_CLI_NO_INIT" in content
 
     assert "curl " not in shell_content
     assert "Invoke-WebRequest" not in powershell_content

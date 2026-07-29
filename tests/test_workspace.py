@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from leetcode_local_cli import workspace
+from leetcode_local_cli.safe_files import SafeFileError, is_windows_reparse_point
 from leetcode_local_cli.workspace import (
     ProblemMetadata,
     SolutionFileStatus,
@@ -75,10 +76,10 @@ def test_write_solution_file_creates_or_overwrites_regular_file(
     if existing_content is not None:
         solution_file.write_text(existing_content, encoding="utf-8")
     opened_paths = []
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
     monkeypatch.setattr(workspace, "open_path", opened_paths.append)
 
     workspace.write_solution_file(
+        solution_file,
         "class Solution:\n    pass",
         ProblemMetadata("1", "1", "Two Sum", "two-sum"),
     )
@@ -103,7 +104,6 @@ def test_write_solution_file_rejects_existing_and_broken_symlinks(
         solution_file.symlink_to(target)
     except OSError as exc:
         pytest.skip(f"symbolic links are unavailable: {exc}")
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
     monkeypatch.setattr(
         workspace,
         "open_path",
@@ -112,6 +112,7 @@ def test_write_solution_file_rejects_existing_and_broken_symlinks(
 
     with pytest.raises(WorkspaceError, match="符号链接或断链"):
         workspace.write_solution_file(
+            solution_file,
             "class Solution:\n    pass",
             ProblemMetadata("1", "1", "Two Sum", "two-sum"),
         )
@@ -134,7 +135,6 @@ def test_write_solution_file_rejects_directory_symlink(
         solution_file.symlink_to(target_directory, target_is_directory=True)
     except OSError as exc:
         pytest.skip(f"symbolic links are unavailable: {exc}")
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
     monkeypatch.setattr(
         workspace,
         "open_path",
@@ -143,6 +143,7 @@ def test_write_solution_file_rejects_directory_symlink(
 
     with pytest.raises(WorkspaceError, match="符号链接或断链"):
         workspace.write_solution_file(
+            solution_file,
             "class Solution:\n    pass",
             ProblemMetadata("1", "1", "Two Sum", "two-sum"),
         )
@@ -154,7 +155,6 @@ def test_write_solution_file_rejects_directory_symlink(
 def test_write_solution_file_rejects_directory(tmp_path, monkeypatch) -> None:
     solution_file = tmp_path / "solution.py"
     solution_file.mkdir()
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
     monkeypatch.setattr(
         workspace,
         "open_path",
@@ -163,6 +163,7 @@ def test_write_solution_file_rejects_directory(tmp_path, monkeypatch) -> None:
 
     with pytest.raises(WorkspaceError, match="是目录"):
         workspace.write_solution_file(
+            solution_file,
             "class Solution:\n    pass",
             ProblemMetadata("1", "1", "Two Sum", "two-sum"),
         )
@@ -179,7 +180,7 @@ def test_windows_reparse_point_attribute_is_rejected(monkeypatch) -> None:
     )
     file_status = SimpleNamespace(st_file_attributes=0x400)
 
-    assert workspace._is_windows_reparse_point(file_status)
+    assert is_windows_reparse_point(file_status)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="junctions are Windows-specific")
@@ -199,7 +200,6 @@ def test_write_solution_file_rejects_windows_junction(
     if result.returncode:
         pytest.skip(f"could not create test junction: {result.stderr}")
     assert junction.is_junction()
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", junction)
     monkeypatch.setattr(
         workspace,
         "open_path",
@@ -208,6 +208,7 @@ def test_write_solution_file_rejects_windows_junction(
 
     with pytest.raises(WorkspaceError, match="reparse point"):
         workspace.write_solution_file(
+            junction,
             "class Solution:\n    pass",
             ProblemMetadata("1", "1", "Two Sum", "two-sum"),
         )
@@ -219,10 +220,12 @@ def test_write_solution_file_rejects_windows_junction(
 def test_write_solution_file_wraps_write_errors(tmp_path, monkeypatch) -> None:
     solution_file = tmp_path / "solution.py"
     solution_file.write_text("previous solution", encoding="utf-8")
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
     monkeypatch.setattr(
-        "builtins.open",
-        lambda *args, **kwargs: (_ for _ in ()).throw(PermissionError),
+        workspace,
+        "atomic_write_text",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            SafeFileError("无法写入 solution.py")
+        ),
     )
     monkeypatch.setattr(
         workspace,
@@ -232,6 +235,7 @@ def test_write_solution_file_wraps_write_errors(tmp_path, monkeypatch) -> None:
 
     with pytest.raises(WorkspaceError, match="无法写入 solution.py"):
         workspace.write_solution_file(
+            solution_file,
             "class Solution:\n    pass",
             ProblemMetadata("1", "1", "Two Sum", "two-sum"),
         )
@@ -261,9 +265,7 @@ def test_parse_solution_submission_reads_metadata_and_submit_code(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
-
-    metadata, code = workspace.parse_solution_submission()
+    metadata, code = workspace.parse_solution_submission(solution_file)
 
     assert metadata == ProblemMetadata(
         problem_id="1",
@@ -292,10 +294,8 @@ def test_parse_solution_submission_rejects_missing_marker(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
-
     with pytest.raises(WorkspaceError, match="提交区域标记不完整"):
-        workspace.parse_solution_submission()
+        workspace.parse_solution_submission(solution_file)
 
 
 def test_parse_solution_submission_reports_missing_file(tmp_path) -> None:
@@ -323,10 +323,8 @@ def test_parse_solution_submission_rejects_missing_submit_question_id(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(workspace, "SOLUTION_FILE", solution_file)
-
     with pytest.raises(WorkspaceError, match="缺少元数据"):
-        workspace.parse_solution_submission()
+        workspace.parse_solution_submission(solution_file)
 
 
 def test_inspect_solution_file_reports_missing_and_empty(tmp_path) -> None:

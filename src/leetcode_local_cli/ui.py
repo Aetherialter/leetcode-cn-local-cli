@@ -81,6 +81,10 @@ def success(message: str) -> None:
     console.print(_external_text(message, style="bold green"))
 
 
+def info(message: str) -> None:
+    console.print(_external_text(message, style="cyan"))
+
+
 def warning(message: str) -> None:
     console.print(_external_text(message, style="bold yellow"))
 

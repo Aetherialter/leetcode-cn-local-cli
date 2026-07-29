@@ -44,6 +44,7 @@ jobs:
           test -n "$wheel_path"
           export LEETCODE_LOCAL_CLI_INSTALL_SPEC="$wheel_path"
           export LEETCODE_LOCAL_CLI_NO_MODIFY_PATH=1
+          export LEETCODE_LOCAL_CLI_NO_INIT=1
           export UV_TOOL_DIR="$RUNNER_TEMP/leetcode-local-cli-tools"
           export UV_TOOL_BIN_DIR="$RUNNER_TEMP/leetcode-local-cli-bin"
           ./scripts/install.sh
@@ -54,6 +55,7 @@ jobs:
         run: |
           $env:LEETCODE_LOCAL_CLI_INSTALL_SPEC = (Resolve-Path "dist/*.whl").Path
           $env:LEETCODE_LOCAL_CLI_NO_MODIFY_PATH = "1"
+          $env:LEETCODE_LOCAL_CLI_NO_INIT = "1"
           $env:UV_TOOL_DIR = Join-Path $env:RUNNER_TEMP "leetcode-local-cli-tools"
           $env:UV_TOOL_BIN_DIR = Join-Path $env:RUNNER_TEMP "leetcode-local-cli-bin"
           & ./scripts/install.ps1

@@ -75,4 +75,21 @@ if ($LASTEXITCODE -ne 0) {
     throw "lc 版本检查失败，退出码：$LASTEXITCODE"
 }
 Write-Info "安装成功：$InstalledVersion"
+
+if ($env:LEETCODE_LOCAL_CLI_NO_INIT -eq "1") {
+    Write-Info "已跳过工作区配置；稍后可执行：$LcPath init"
+} elseif (
+    [Environment]::UserInteractive -and
+    -not [Console]::IsInputRedirected -and
+    -not [Console]::IsOutputRedirected
+) {
+    Write-Info "开始配置工作区"
+    & $LcPath init
+    if ($LASTEXITCODE -ne 0) {
+        throw "lc 已安装，但工作区配置未完成；请稍后执行：$LcPath init"
+    }
+} else {
+    Write-Info "当前环境不可交互，已跳过工作区配置；请执行：$LcPath init"
+}
+
 Write-Info "如果当前终端找不到 lc，请重新打开终端或执行：$LcPath --help"

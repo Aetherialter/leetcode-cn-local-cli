@@ -1,8 +1,8 @@
 # 力扣中文站本地化刷题 CLI 工具
 
-一个面向 LeetCode 中文站的轻量本地刷题 CLI。它复用浏览器登录态，在线获取题目，在当前工作目录生成单文件 `solution.py`，并支持本地测试和远程提交。
+一个面向 LeetCode 中文站的轻量本地刷题 CLI。它复用浏览器登录态，在线获取题目，在显式配置的默认工作区维护单文件 `solution.py`，并支持本地测试和远程提交。
 
-当前版本：`v0.7.2`
+当前版本：`v0.8.0`
 
 ## 长期开发手册
 
@@ -16,7 +16,7 @@
 
 - 读取 Chrome 中的 `leetcode.cn` Cookie，复用登录态。
 - 在线获取题目详情和题目索引。
-- 使用当前工作目录的 `solution.py` 作为唯一主要工作区。
+- 使用 `lc init` 配置的默认工作区和单个 `solution.py`。
 - `lc solve <题号>` 生成可编辑的 Python 解题模板。
 - 生成模板后会按当前系统尝试打开 `solution.py`。
 - `lc test` 执行本地 `solution.py`；`run_cases()` 的最终调用契约仍在产品边界文档中待定。
@@ -38,22 +38,36 @@
 Linux / macOS 一键安装：
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.2/scripts/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.8.0/scripts/install.sh | sh
 ```
 
 Windows PowerShell 一键安装：
 
 ```powershell
-powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.7.2/scripts/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.8.0/scripts/install.ps1 | iex"
 ```
 
-安装器要求系统已安装 uv；如果未检测到 uv，会安全退出并提示访问 [uv 官方文档](https://docs.astral.sh/uv/)，不会自动下载或执行第三方远端安装脚本。检测到 uv 后，安装器会使用 `uv tool install` 安装 `leetcode-local-cli`，并执行 `lc --version` 验证结果。安装过程不使用 `sudo`，也不会保存 PyPI 或 GitHub 凭据。
+安装器要求系统已安装 uv；如果未检测到 uv，会安全退出并提示访问 [uv 官方文档](https://docs.astral.sh/uv/)，不会自动下载或执行第三方远端安装脚本。检测到 uv 后，安装器会使用 `uv tool install` 安装 `leetcode-local-cli`，执行绝对路径的 `lc --version` 验证结果，并在可交互终端继续运行 `lc init`。安装过程不使用 `sudo`，也不会保存 PyPI 或 GitHub 凭据。
 
 已经安装 uv 时，也可以直接安装：
 
 ```shell
 uv tool install leetcode-local-cli
 ```
+
+直接执行 `uv tool install` 不会运行项目自定义的安装后交互。首次使用前还需要手动执行：
+
+```shell
+lc init
+```
+
+自动化或 AI 验收可以显式指定完整工作区路径：
+
+```shell
+lc init D:/Projects/leetcode-local-cli --yes
+```
+
+官方安装器在非交互环境中不会等待输入，而是提示稍后手动执行 `lc init`。CI 可设置 `LEETCODE_LOCAL_CLI_NO_INIT=1` 显式跳过。版本更新发现有效默认工作区时会直接复用，不会重新询问、清空 `solution.py` 或修改工作区配置。
 
 升级或卸载：
 
@@ -67,6 +81,7 @@ uv tool uninstall leetcode-local-cli
 ## 基本工作流
 
 ```shell
+lc init
 lc login
 lc doctor
 lc status
@@ -80,12 +95,14 @@ lc submit
 
 | 命令 | 作用 |
 | --- | --- |
+| `lc init` | 交互输入父目录并创建或复用默认 `leetcode-local-cli` 工作区 |
+| `lc init <完整路径> --yes` | 非交互配置明确的完整工作区路径，适合 AI/CI 验收 |
 | `lc login` | 读取或手动录入 LeetCode 中文站 Cookie |
 | `lc status` | 检查当前登录态 |
 | `lc profile` | 展示账号和刷题统计 |
 | `lc show --limit 20 --skip 0` | 分页展示题目索引，`limit` 单次最大为 100 |
 | `lc get <题号>` | 在线展示题目详情 |
-| `lc solve <题号>` | 覆盖生成当前目录的 `solution.py` |
+| `lc solve <题号>` | 原子覆盖生成默认工作区的 `solution.py` |
 | `lc test` | 运行本地 `solution.py` |
 | `lc doctor` | 诊断 Session、网络、Cookie 和 `solution.py`，默认不执行代码 |
 | `lc doctor --run-solution` | 额外运行当前工作区的 `solution.py` |
@@ -93,9 +110,9 @@ lc submit
 
 ## solution.py 规则
 
-`lc solve` 会创建不存在的 `solution.py`，也会覆盖当前目录中的普通 `solution.py`。切换题目前请自行保存当前解法。
+`lc init` 会创建不存在的空 `solution.py`，但已有普通文件会完整保留。`lc solve` 会创建不存在的 `solution.py`，也会原子覆盖默认工作区中的普通 `solution.py`。切换题目前请自行保存当前解法。
 
-如果同名路径是符号链接、断链、目录、目录链接、Windows junction 或其他 reparse point，命令会拒绝写入并以非零状态退出，不会打开该目标。
+如果工作区、配置或同名文件是符号链接、断链、目录链接、Windows junction 或其他 reparse point，初始化或写入会拒绝并以非零状态退出。普通文件覆盖使用同目录随机临时文件和原子替换，写入失败不会先截断旧解法。
 
 生成文件会包含题目元信息和提交区域：
 
@@ -129,7 +146,7 @@ class Solution:
 - 当前仅自动读取 Chrome Cookie。
 - `lc solve` 生成模板后会尝试打开 `solution.py`；Windows 使用系统默认打开方式，macOS 使用 `open`，Linux 使用 `xdg-open`。
 - 当前远程提交仅支持 Python3。
-- 当前只维护 CLI 启动目录中的单个 `solution.py`，不会生成每题独立目录。
+- 当前只维护用户配置所指向的单个默认工作区和单个 `solution.py`，不会生成每题独立目录，也不提供全局 `--workspace`。
 - 当前不保存完整题面到本地，也不引入本地数据库。
 - `lc solve` 会强制覆盖普通 `solution.py`，但拒绝符号链接、断链、目录、目录链接和 Windows reparse point。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
@@ -142,19 +159,19 @@ class Solution:
 
 ## 安全说明
 
-登录态会保存到：
+登录态会保存到默认工作区：
 
 ```text
 .leetcode_local_cli/session.json
 ```
 
-该文件可能包含敏感 Cookie 信息，已在 `.gitignore` 中忽略。v0.7 首次读取登录态时会把旧版 `.aether_lc/session.json` 自动迁移到新目录；迁移过程不会输出 Cookie 值。发布前请确认仓库根目录的 `solution.py` 为空，避免把个人解法提交到公开仓库。
+该文件包含敏感 Cookie 信息，当前仓库已在 `.gitignore` 中忽略。v0.8 不读取、迁移或删除旧 `.aether_lc/session.json`，也暂不接入操作系统凭据管理器；这是为维护者授权 AI 使用真实账号验收而保留的阶段性方案，不是长期安全终点。不要把工作区放进同步盘或共享目录，不要输出、暂存、提交或上传 Session 内容。发布前请确认仓库根目录的 `solution.py` 为空。
 
 仓库还会忽略常见个人编辑器目录、`.env*` 和常见凭据 JSON 文件名，并通过测试检查已跟踪 JSON 中的高风险秘密字段。不要使用 `git add -f` 强制添加这些文件；提交前仍应检查 `git status`，因为 `.gitignore` 不能替代秘密扫描，也不能保护已经被跟踪的文件。
 
 ## 登录态说明
 
-`leetcode-local-cli` 会把浏览器 Cookie 的本地副本保存到 CLI 启动目录下的 `.leetcode_local_cli/session.json`。本地保存的 Cookie 不会延长 LeetCode 登录态有效期；实际是否有效以 LeetCode 服务端验证为准。v0.8 的 `lc init` 会进一步将用户登录态与工作区分离。
+`leetcode-local-cli` 会把浏览器 Cookie 的本地副本保存到默认工作区的 `.leetcode_local_cli/session.json`。本地保存的 Cookie 不会延长 LeetCode 登录态有效期；实际是否有效以 LeetCode 服务端验证为准。`lc init`、版本更新和工具卸载都不会覆盖或删除该文件。
 
 如果浏览器 Cookie 刷新，或旧 Cookie 被服务端判定失效，CLI 可能在 `lc status`、`lc profile` 或 `lc submit` 时提示重新执行：
 
@@ -201,8 +218,11 @@ src/leetcode_local_cli/
   auth.py       Cookie 读取与本地 session
   client.py     LeetCode 中文站 HTTP 客户端
   cli.py        Typer 命令入口
+  config.py     版本化配置读取与工作区初始化
   doctor.py     本地环境、网络与登录态诊断
+  paths.py      跨平台路径与 AppPaths 运行上下文
   problem.py    题号解析与题目数据标准化
+  safe_files.py 非普通目标拒绝与原子文件写入
   service.py    应用层流程编排
   ui.py         Rich 终端输出
   version.py    已安装发行版版本读取
@@ -228,10 +248,13 @@ tests/
   test_auth.py
   test_cli.py
   test_client.py
+  test_config.py
   test_doctor.py
   test_install_scripts.py
   test_problem.py
+  test_paths.py
   test_release.py
+  test_safe_files.py
   test_service.py
   test_ui.py
   test_workspace.py
@@ -248,7 +271,7 @@ tests/
 - `v0.7.0`: uv 全局工具安装、跨平台引导脚本和 PyPI Trusted Publisher 发布流程。
 - `v0.7.1`: 修正安装版 CLI 的命令建议，并引入版本化 GitHub Release Notes。
 - `v0.7.2`: 收紧安全边界，避免诊断命令默认执行解题文件，并移除安装器的远端脚本执行。
-- `v0.8`: 运行上下文、配置与工作区基础。
+- `v0.8.0`: 新增显式运行上下文、版本化配置、`lc init`、默认工作区和安装后初始化。
 - `v0.9`: 领域模型、异常与 Python API 预览。
 - `v0.10`: 双站点客户端与独立账号体系。
 - 后续版本：CLI 迁移、题面与 UI、源码收口和发布加固，详见[长期开发计划](docs/DEVELOPMENT_PLAN.md)。

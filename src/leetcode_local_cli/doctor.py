@@ -43,7 +43,7 @@ class DoctorReport:
         return not any(check.status == DoctorStatus.FAIL for check in self.checks)
 
 
-def diagnose_session(path: Path | None = None) -> DoctorCheck:
+def diagnose_session(path: Path) -> DoctorCheck:
     """Translate the local session inspection into a user-facing check.
 
     The returned check may contain safe metadata and missing cookie names, but
@@ -102,9 +102,7 @@ def diagnose_session(path: Path | None = None) -> DoctorCheck:
             )
 
 
-def diagnose_solution(
-    path: Path | None = None, *, run_solution: bool = False
-) -> DoctorCheck:
+def diagnose_solution(path: Path, *, run_solution: bool = False) -> DoctorCheck:
     """Inspect solution.py and optionally verify it in a subprocess."""
     inspection = inspect_solution_file(path)
     if run_solution and inspection.status in {
@@ -179,7 +177,7 @@ def diagnose_solution(
             )
 
 
-def _diagnose_solution_runtime(path: Path | None) -> DoctorCheck | None:
+def _diagnose_solution_runtime(path: Path) -> DoctorCheck | None:
     try:
         result = run_solution_file(
             path,

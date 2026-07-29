@@ -66,4 +66,16 @@ LC_PATH="$TOOL_BIN_DIR/lc"
 
 INSTALLED_VERSION=$("$LC_PATH" --version)
 info "安装成功：$INSTALLED_VERSION"
+
+if [ "${LEETCODE_LOCAL_CLI_NO_INIT:-0}" = "1" ]; then
+    info "已跳过工作区配置；稍后可执行：$LC_PATH init"
+elif [ -t 1 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    info "开始配置工作区"
+    if ! "$LC_PATH" init </dev/tty >/dev/tty 2>/dev/tty; then
+        fail "lc 已安装，但工作区配置未完成；请稍后执行：$LC_PATH init"
+    fi
+else
+    info "当前环境不可交互，已跳过工作区配置；请执行：$LC_PATH init"
+fi
+
 info "如果当前终端找不到 lc，请重新打开终端或执行：$LC_PATH --help"

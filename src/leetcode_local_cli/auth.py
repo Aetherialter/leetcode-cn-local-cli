@@ -6,6 +6,13 @@ from enum import Enum
 from getpass import getpass
 from pathlib import Path
 
+from leetcode_local_cli.safe_files import (
+    SafeFileError,
+    atomic_write_text,
+    ensure_regular_directory,
+    validate_regular_file_target,
+)
+
 
 with warnings.catch_warnings():
     # wmi 1.5.1, imported transitively by browser-cookie3 on Windows, contains
@@ -23,11 +30,6 @@ LC_DOMAIN = "leetcode.cn"
 BROWSER_LOADERS = [("Chrome", browser_cookie3.chrome)]
 
 REQUIRED_COOKIE_NAMES = ("LEETCODE_SESSION", "csrftoken")
-PROJECT_ROOT = Path.cwd()
-SESSION_DIR = PROJECT_ROOT / ".leetcode_local_cli"
-SESSION_FILE = SESSION_DIR / "session.json"
-LEGACY_SESSION_DIR = PROJECT_ROOT / ".aether_lc"
-LEGACY_SESSION_FILE = LEGACY_SESSION_DIR / "session.json"
 
 
 class SessionFileStatus(str, Enum):
@@ -49,31 +51,6 @@ class SessionFileInspection:
 
 class SessionFileError(OSError):
     pass
-
-
-def _resolve_default_session_file() -> Path:
-    """Move the pre-v0.7 session to the canonical directory when possible."""
-    if SESSION_FILE.exists() or not LEGACY_SESSION_FILE.exists():
-        return SESSION_FILE
-
-    try:
-        SESSION_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if os.name != "nt":
-            os.chmod(SESSION_DIR, 0o700)
-        LEGACY_SESSION_FILE.replace(SESSION_FILE)
-        if os.name != "nt":
-            os.chmod(SESSION_FILE, 0o600)
-        try:
-            LEGACY_SESSION_DIR.rmdir()
-        except OSError:
-            # Preserve a non-empty legacy directory instead of deleting unrelated data.
-            pass
-    except OSError:
-        if SESSION_FILE.exists():
-            return SESSION_FILE
-        return LEGACY_SESSION_FILE
-
-    return SESSION_FILE
 
 
 def get_cookies_from_browser() -> tuple[str, dict[str, str]] | None:
@@ -131,51 +108,44 @@ def get_cookies_from_input() -> dict[str, str] | None:
     return parse_cookie_header(getpass("请粘贴 Cookie（输入内容不会回显）：\n"))
 
 
-def save_session(session_data: dict, path: Path | None = None) -> None:
-    if path is None:
-        _resolve_default_session_file()
-    file_path = path or SESSION_FILE
-    temporary_file = file_path.with_suffix(f"{file_path.suffix}.tmp")
+def save_session(session_data: dict, path: Path) -> None:
     try:
-        file_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if path is None and os.name != "nt":
-            os.chmod(file_path.parent, 0o700)
-        descriptor = os.open(
-            temporary_file,
-            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-            0o600,
+        content = json.dumps(session_data, indent=4, ensure_ascii=False)
+        ensure_regular_directory(
+            path.parent,
+            label="Session 目录",
+            mode=0o700,
         )
-        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-            json.dump(session_data, file, indent=4, ensure_ascii=False)
-        os.chmod(temporary_file, 0o600)
-        temporary_file.replace(file_path)
-        os.chmod(file_path, 0o600)
+        if os.name != "nt":
+            os.chmod(path.parent, 0o700)
+        atomic_write_text(
+            path,
+            content,
+            label="Session 文件",
+            mode=0o600,
+        )
     except (OSError, TypeError, ValueError) as exc:
-        try:
-            temporary_file.unlink(missing_ok=True)
-        except OSError:
-            pass
         raise SessionFileError("无法保存 Session 文件") from exc
 
 
-def load_session() -> dict | None:
-    file_path = _resolve_default_session_file()
+def load_session(path: Path) -> dict | None:
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        if validate_regular_file_target(path, label="Session 文件") is None:
+            return None
+        with path.open("r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         return None
     except json.JSONDecodeError:
         return None
-    except OSError as exc:
+    except (OSError, SafeFileError) as exc:
         raise SessionFileError("无法读取 Session 文件") from exc
 
 
-def inspect_session_file(path: Path | None = None) -> SessionFileInspection:
-    if path is None:
-        path = _resolve_default_session_file()
-
+def inspect_session_file(path: Path) -> SessionFileInspection:
     try:
+        if validate_regular_file_target(path, label="Session 文件") is None:
+            return SessionFileInspection(status=SessionFileStatus.MISSING)
         content = path.read_text(encoding="utf-8")
 
     except FileNotFoundError:
@@ -183,7 +153,7 @@ def inspect_session_file(path: Path | None = None) -> SessionFileInspection:
             status=SessionFileStatus.MISSING,
         )
 
-    except OSError:
+    except (OSError, SafeFileError):
         return SessionFileInspection(
             status=SessionFileStatus.READ_ERROR,
         )

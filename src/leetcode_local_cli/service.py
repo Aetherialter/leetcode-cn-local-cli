@@ -23,6 +23,7 @@ from leetcode_local_cli.problem import (
     normalize_problem_summaries,
     parse_question_id,
 )
+from leetcode_local_cli.paths import AppPaths
 from leetcode_local_cli.ui import error, loading, render_submission_target, warning
 from leetcode_local_cli.workspace import WorkspaceError, parse_solution_submission
 
@@ -54,15 +55,15 @@ def client_error_message(kind: ClientErrorKind | None) -> str:
             return "未知客户端错误"
 
 
-def _load_cookies_from_session() -> dict[str, str]:
-    session_check = diagnose_session()
+def _load_cookies_from_session(paths: AppPaths) -> dict[str, str]:
+    session_check = diagnose_session(paths.session_file)
     if session_check.status is DoctorStatus.FAIL:
         error(session_check.message)
         if session_check.suggestion:
             warning(session_check.suggestion)
         raise Exit(1)
     try:
-        session = load_session()
+        session = load_session(paths.session_file)
     except SessionFileError as exc:
         error(str(exc))
         raise Exit(1)
@@ -131,8 +132,8 @@ def _validate_show_options(limit: int, skip: int) -> None:
         raise Exit(1)
 
 
-def get_user_status() -> dict:
-    cookies = _load_cookies_from_session()
+def get_user_status(paths: AppPaths) -> dict:
+    cookies = _load_cookies_from_session(paths)
     with LeetCodeClient(cookies) as client:
         user_status = client.user_status()
     if not user_status.ok:
@@ -145,8 +146,8 @@ def get_user_status() -> dict:
     return user_status.data
 
 
-def get_account_profile() -> dict:
-    cookies = _load_cookies_from_session()
+def get_account_profile(paths: AppPaths) -> dict:
+    cookies = _load_cookies_from_session(paths)
     with LeetCodeClient(cookies) as client:
         with loading("正在获取账户信息..."):
             account_profile = client.account_profile()
@@ -159,9 +160,13 @@ def get_account_profile() -> dict:
     return account_profile.data
 
 
-def get_problem_summaries(limit: int = 50, skip: int = 0) -> list[ProblemSummary]:
+def get_problem_summaries(
+    paths: AppPaths,
+    limit: int = 50,
+    skip: int = 0,
+) -> list[ProblemSummary]:
     _validate_show_options(limit, skip)
-    cookies = _load_cookies_from_session()
+    cookies = _load_cookies_from_session(paths)
     with LeetCodeClient(cookies) as client:
         with loading("正在获取题目索引..."):
             problem_list_data = client.problem_list(limit=limit, skip=skip)
@@ -180,9 +185,12 @@ def get_problem_summaries(limit: int = 50, skip: int = 0) -> list[ProblemSummary
     return normalize_problem_summaries(questions)
 
 
-def get_problem_detail_by_question_id(question_id: str) -> ProblemDetail:
+def get_problem_detail_by_question_id(
+    paths: AppPaths,
+    question_id: str,
+) -> ProblemDetail:
     normalized_question_id = _parse_question_id_or_exit(question_id)
-    cookies = _load_cookies_from_session()
+    cookies = _load_cookies_from_session(paths)
     with LeetCodeClient(cookies) as client:
         with loading("正在获取题目索引..."):
             problem_summary = _find_problem_summary_by_question_id_online(
@@ -201,15 +209,20 @@ def get_problem_detail_by_question_id(question_id: str) -> ProblemDetail:
     return problem_detail
 
 
-def get_doctor_report(*, run_solution: bool = False) -> DoctorReport:
-    session_check = diagnose_session()
+def get_doctor_report(
+    paths: AppPaths,
+    *,
+    run_solution: bool = False,
+) -> DoctorReport:
+    session_check = diagnose_session(paths.session_file)
     solution_check = diagnose_solution(
+        paths.solution_file,
         run_solution=run_solution,
     )
 
     cookies: dict[str, str] | None = None
     try:
-        session = load_session()
+        session = load_session(paths.session_file)
     except SessionFileError:
         session = None
     if isinstance(session, dict):
@@ -237,9 +250,9 @@ def get_doctor_report(*, run_solution: bool = False) -> DoctorReport:
     )
 
 
-def submit_current_solution() -> dict | None:
+def submit_current_solution(paths: AppPaths) -> dict | None:
     try:
-        metadata, code = parse_solution_submission()
+        metadata, code = parse_solution_submission(paths.solution_file)
         submit_question_id, title_slug = (
             metadata.submit_question_id,
             metadata.title_slug,
@@ -248,7 +261,7 @@ def submit_current_solution() -> dict | None:
         error(str(exc))
         raise Exit(1)
     render_submission_target(metadata)
-    cookies = _load_cookies_from_session()
+    cookies = _load_cookies_from_session(paths)
     with LeetCodeClient(cookies) as client:
         submission_id = client.submit_solution(title_slug, submit_question_id, code)
         if not submission_id.ok:

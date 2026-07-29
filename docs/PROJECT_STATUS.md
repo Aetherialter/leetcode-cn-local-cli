@@ -1,122 +1,82 @@
 # 项目状态
 
-最近更新：2026-07-29
+最近更新：2026-07-30
 
-当前发行版本：`v0.7.2`
+当前开发版本：`v0.8.0`
 
-本文是项目长期开发上下文的状态入口，只记录已经由源码、测试和现有文档确认的事实。用户可见行为以 [README](../README.md) 和 [产品边界与待定决策](PRODUCT_BOUNDARIES.md) 为准；安全问题以 [安全审计与修复清单](SECURITY_REVIEW.md) 为准。
+本文是项目长期开发上下文的状态入口，只记录源码、测试和当前文档已经确认的事实。用户可见行为以 [README](../README.md) 和 [产品边界](PRODUCT_BOUNDARIES.md) 为准；安全问题以 [安全审计](SECURITY_REVIEW.md) 为准。
 
 ## 当前项目目标
 
-当前产品是面向 LeetCode 中文站的轻量、在线优先、本地刷题 CLI。它复用浏览器或手动输入的登录 Cookie，在 CLI 启动目录维护单个 `solution.py`，支持题目查询、本地测试和远程提交，不以本地题库、数据库或多题目录为当前产品目标。
+`leetcode-local-cli` 是面向 LeetCode 中文站的轻量、在线优先、本地刷题 CLI。当前版本通过一个显式配置的默认工作区维护单个 `solution.py`，支持登录、题目查询、本地测试、诊断和远程提交，不引入本地数据库、完整题库或每题独立目录。
 
-[v1.0 总体设计大纲](PROJECT_DESIGN.md)提出的长期目标是：在保持轻量 CLI 的同时，形成可复用的 Python 核心、稳定 Python API、中文站与国际站双站点支持，以及明确的配置、凭据和工作区边界。该文档仍处于 `Draft 0.2`，不能把其中尚未实施的接口视为当前能力。
+长期目标仍是形成共享核心实现的稳定 CLI 与 Python API，并支持中文站和国际站。长期设计中的双站点、系统秘密存储、图片和 UI 改造尚未实现。
 
 ## 已完成功能
 
-### 用户工作流
+### v0.8 运行上下文与工作区
 
-- `lc login`：自动读取 Chrome 中属于 `leetcode.cn` 的必要 Cookie，失败时允许无回显手动输入，并在线验证登录态。
-- `lc status`：验证并显示当前登录账号。
-- `lc profile`：显示账号公开资料和按难度统计的解题数据。
-- `lc show`：分页显示题目索引，并校验 `limit` 与 `skip`。
-- `lc get <题号>`：按展示题号在线查找并显示题目详情。
-- `lc solve <题号>`：生成当前启动目录中的 `solution.py`，写入题目元数据、提交区域和本地 `run_cases()` 模板。
-- `lc test`：静态检查后，以当前 Python 解释器执行整个 `solution.py`。
-- `lc doctor`：检查 Session、中文站连通性、Cookie 登录态和解题文件；默认不执行工作区代码。
-- `lc doctor --run-solution`：在显式请求时额外执行 `solution.py`，并使用 10 秒超时。
-- `lc submit`：仅提交 marker 区域代码，并轮询远端判题结果。
+- 新增不可变 `AppPaths`，集中描述用户配置、工作区配置、`solution.py` 和 Session 路径。
+- `auth.py`、`workspace.py`、`doctor.py` 和 service 调用链都显式接收路径，不再在模块导入时捕获 `Path.cwd()`。
+- 跨平台用户配置位置遵循 Windows `%APPDATA%`、macOS `Application Support` 和 Linux `XDG_CONFIG_HOME`/`~/.config`。
+- 新增版本化用户配置 `config.toml` 和工作区标记 `.leetcode-local-cli.toml`。
+- 新增 `lc init [path]`：无路径时交互输入父目录并追加 `leetcode-local-cli`；显式路径表示完整工作区路径；`--yes` 仅允许与显式路径组合。
+- 初始化不存在的工作区时创建目录、工作区配置和空 `solution.py`；已有普通 `solution.py` 保持原内容；重复初始化幂等。
+- 损坏配置、符号链接、断链、目录目标、junction 和 Windows reparse point 会被拒绝，不会绕过验证或静默覆盖。
+- 所有普通命令从用户配置读取默认工作区；当前版本不提供全局 `--workspace`。
+- 官方安装脚本安装并验证绝对 `lc` 路径后，在可交互终端调用 `lc init`；非交互环境或 `LEETCODE_LOCAL_CLI_NO_INIT=1` 会跳过并给出手动命令。
+- 更新安装时，`lc init` 检测到有效默认工作区后直接复用，不重新询问或修改工作区文件。
 
-### 工程能力
+### 文件与 Session 安全
 
-- 使用 `src` 布局和 `pyproject.toml` 管理 Python 包。
-- 使用 uv 管理锁文件、开发环境、构建和工具安装。
-- 使用 Ruff、Pyright 和 pytest 作为格式、Lint、类型和测试门禁。
-- 使用 `httpx.MockTransport` 验证 HTTP 错误和响应结构边界，不在 CI 保存真实 LeetCode Cookie。
-- Linux、macOS 和 Windows 安装脚本都要求预先安装 uv，不自动执行远端安装脚本。
-- 标签触发的 GitHub Actions 在三种操作系统上验证代码、测试、构建和安装器，再通过 PyPI Trusted Publisher 发布。
-- 外部文本以纯文本方式交给 Rich，过滤 ANSI、OSC 和其他不安全终端控制字符。
-- Session 诊断结果不包含 Cookie 值；Cookie 域名使用标签边界匹配。
-- `lc solve` 只创建或覆盖普通 `solution.py`；符号链接、断链、目录、目录链接和 Windows reparse point 会在写入前被拒绝，并返回无 traceback 的 CLI 错误。
-- 项目文档集中维护在 `docs/`，由 `docs/README.md` 提供入口；旧 `ROADMAP.md` 已退出，开发路线只在 `DEVELOPMENT_PLAN.md` 维护。
-- 个人编辑器与本地 AI 工具目录、环境文件和常见凭据 JSON 文件名由 `.gitignore` 排除；仓库测试同时检查代表性规则和已跟踪 JSON 的高风险秘密字段。
+- `solution.py` 覆盖改用同目录随机临时文件、完整写入和原子替换；写入失败保留旧文件。
+- Session 写入同样使用随机临时文件和原子替换，并拒绝非普通目标。
+- Session 暂时按已确认的阶段性方案保存在默认工作区的 `.leetcode_local_cli/session.json`，以支持维护者授权的真实账号验收。
+- 不迁移或删除旧 `.aether_lc/session.json`；当前无人使用旧版本，用户需要重新登录。
+- `.leetcode_local_cli/` 继续由仓库 `.gitignore` 排除，诊断和错误输出不得包含 Cookie 值。
+
+### 既有用户工作流
+
+- `lc login`、`status`、`profile`、`show`、`get`、`solve`、`test`、`doctor` 和 `submit` 的核心能力保持。
+- 当前仍只正式支持 LeetCode 中文站和 Python3 提交。
+- `lc doctor` 默认不执行用户代码；只有 `--run-solution` 才执行。
+- `lc solve` 仍表示切换当前题目，因此可以无确认覆盖普通 `solution.py`。
 
 ## 当前开发阶段
 
-项目处于 `v0.7.2` 发布后的稳定化与 `v0.8` 设计准备阶段。
+v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实现，并已完成本地发布前质量门禁。下一阶段是 v0.9 的领域模型、异常边界和 Python API 预览，不应在 v0.8 中继续扩大功能范围。
 
-当前版本已经形成“登录 → 查询 → 生成 → 本地测试 → 提交 → 诊断”的主流程，但还没有达到长期设计所要求的可复用 Python 核心。当前主要工作不是继续增加表层命令，而是处理已知安全问题、拍板尚未确定的行为语义，并消除路径、界面和业务逻辑之间的耦合。
-
-2026-07-29 的本地基线结果：
-
-- `uv run ruff format --check src tests scripts`：通过，23 个文件已格式化。
-- `uv run ruff check src tests scripts pyproject.toml`：通过。
-- `uv run pyright src tests scripts`：通过，0 errors。
-- `uv run pytest -q`：161 passed，10 skipped；当前 Windows 环境跳过 7 项 POSIX/Bash 专项测试，并因系统未授予符号链接权限跳过 3 项链接测试；实际 Windows junction 测试通过。
-- `uv run lc --version` 和 `uv run lc --help`：通过。
-- 从本地 wheel 隔离执行 `uv tool install` 后，安装版 `lc --version` 和已安装包的普通文件创建、目录目标拒绝验证通过。
+当前本地验证结果：Ruff format/check、Pyright、构建、`lc --version` 和 `lc --help` 均通过；`pytest` 为 198 passed、13 skipped。Windows 隔离安装冒烟测试已使用 v0.8.0 wheel 通过官方 PowerShell 安装脚本完成，验证了安装后绝对路径调用、首次初始化和项目外复用默认工作区。
 
 ## 未完成任务
 
-### 已确认但尚未实现
+### 下一批产品决策
 
-- 将用户配置、凭据和工作区路径解耦。
-- 移除模块导入时固定 `Path.cwd()` 的路径状态。
-- 将工作区明文 Cookie 迁移到跨平台用户配置与系统秘密存储边界。
-
-### 需要先做产品决策
-
-- `lc test` 是否必须验证或主动调用 `run_cases()`。
-- 本地测试成功、失败和详细 traceback 的输出策略。
-- `lc submit` 对 Accepted、非 Accepted、请求失败和轮询超时的退出码。
-- 提交前是否进行静态编译或 marker 区域校验。
-- 工作区写入失败时的数据完整性与原子替换保证。
-- 非 UTF-8 `solution.py` 的支持范围。
+- `lc test` 是否必须验证或主动调用 `run_cases()`，以及超时和输出策略。
+- `lc submit` 对 Accepted、非 Accepted 和轮询超时的退出码。
+- 提交前静态校验范围。
+- 非 UTF-8 `solution.py` 的处理边界。
 - 编辑器配置优先级和安全命令模型。
-- `v0.8` 的工作区根目录、子目录调用、文件位置和初始化语义。
-- 系统秘密存储不可用时是否以及如何显式降级。
-- 合法空分页、Broken Pipe 和受支持 Python 小版本的行为。
+- 合法空分页、Broken Pipe 和正式支持的 Python 小版本。
 
-完整清单见 [产品边界与待定决策](PRODUCT_BOUNDARIES.md)。
+### 长期任务
 
-### 长期架构任务
-
-- 建立显式运行上下文和路径对象。
-- 建立结构化领域模型与异常层级，逐步替换成功结果中的裸 `dict` 和 `Any`。
-- 让核心代码不依赖 Typer、Rich 或终端退出行为。
-- 提供预览并最终稳定的 Python API。
-- 通过站点适配器支持 LeetCode 中文站与国际站，并严格隔离凭据。
-- 在核心迁移完成后，再实施题面结构、图片降级、UI 改造和源码收口。
+- 将 service 中的 Typer/Rich 依赖迁出核心业务层。
+- 以类型模型和项目异常逐步替换裸字典与 `typer.Exit`。
+- 提供 Python API 预览并建立站点适配器。
+- 在后续版本重新设计系统秘密存储；v0.8 的明文 Session 不是长期安全终点。
 
 ## 当前问题
 
-### 安全与数据完整性
-
-- `SR-002`：Cookie 以明文 JSON 保存在 CLI 启动目录，存在误提交、同步和共享泄露风险。
-- `SR-003`：`solve` 通过系统文件关联打开 `.py`；Windows 上文件关联可能不是编辑器。该风险当前已被产品接受，等待显式编辑器配置替代。
-- `SR-004`：`solution.py` 已拒绝静态可识别的非普通目标，但 `lstat()` 与直接写入之间仍有竞争窗口，且尚未实现原子替换；Session 固定临时文件写入仍会跟随链接目标。
-
-### 行为与可靠性
-
-- 非空且语法合法、但没有有效测试入口的脚本可能被 `lc test` 判定为通过。
-- `lc test` 没有超时，而 Doctor 的显式执行有 10 秒超时。
-- 非 Accepted 判题和轮询超时可能仍以进程退出码 0 结束。
-- `lc solve` 的权限、占用等写入异常已转换为工作区错误；非 UTF-8 解题文件和完整的失败后旧文件保证仍未收敛。
-- 极大但合法的分页偏移和 Broken Pipe 行为尚未定界。
-
-### 架构与维护
-
-- `auth.py` 和 `workspace.py` 在导入时捕获当前目录。
-- `service.py` 直接导入 `typer.Exit` 和 UI 函数，应用流程尚不能作为独立库复用。
-- CLI 命令并未统一通过 service 或未来公开 API，存在多条编排路径。
-- 当前 GitHub Actions 只在 `v*` 标签推送时运行，普通分支和 Pull Request 缺少持续验证。
-- 项目文档已集中到 `docs/`，未来实施路线以 `DEVELOPMENT_PLAN.md` 为唯一入口，长期目标以 `PROJECT_DESIGN.md` 为准。
+- `.leetcode_local_cli/session.json` 仍包含明文 Cookie；放入同步盘、共享目录或其他 Git 仓库存在泄露风险。
+- `lc test` 仍可能把缺少有效测试入口的可编译脚本判定为通过，且没有超时。
+- 非 Accepted 判题和轮询超时尚未统一返回非零退出码。
+- Windows 上系统默认 `.py` 关联可能不是编辑器；当前行为仍按既有兼容边界保留。
+- 普通 push 和 Pull Request 尚无日常 CI，标签工作流仍是主要发布门禁。
 
 ## 下一步计划
 
-1. 拍板 `PB-005`，明确失败时是否字节级保留原文件、是否使用同目录随机临时文件和原子替换，再完成工作区写入事务。
-2. 按 `PB-001`、`PB-003`、`PB-006`、`PB-002`、`PB-004` 的顺序明确测试、提交、编码和输出语义。
-3. 为普通 push 和 Pull Request 增加日常 CI，把标签工作流保留为发布门禁。
-4. 开始 `v0.8`：显式运行上下文、配置边界、最小 `lc init`、秘密存储入口和旧 Session 迁移。
-
-每完成一个功能，应同步更新本文的基线、已完成功能、开放问题和下一步计划。
+1. 完成 v0.8.0 全量质量、构建、入口和隔离安装验证。
+2. 对官方安装脚本在真实 Windows、macOS 和 Linux 交互终端执行手动验收。
+3. 在明确授权下，使用不会输出 Cookie 的真实账号流程验证一次远程提交。
+4. 进入 v0.9 前先确定本地测试和远程提交的剩余产品语义。

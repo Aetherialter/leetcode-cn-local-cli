@@ -1,6 +1,6 @@
 [project]
 name = "leetcode-local-cli"
-version = "0.7.2"
+version = "0.8.0"
 description = "Local coding workflow CLI for LeetCode CN."
 readme = "README.md"
 license = "MIT"
