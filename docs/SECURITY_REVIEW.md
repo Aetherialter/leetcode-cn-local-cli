@@ -55,12 +55,11 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 
 ### `lc test` 假通过与无限等待
 
-- 内部 runner 在入口缺失时先通过 AST 拒绝，不会为了判断入口而执行文件顶层代码。
-- 默认模板、旧模板和等价无操作 `run_cases()` 都返回未配置状态，不再显示测试通过。
-- 有效入口在独立子进程中以非 `__main__` 名称加载并只调用一次；断言、运行异常和超时映射为稳定非零状态。
-- 子进程默认总超时为 1 秒，调用使用参数数组且不启用 Shell。
-- 用户 stdout 和简化错误经过控制字符过滤；异常不把 Python traceback 直接展示给普通 CLI 用户。
-- 该控制不是沙箱。用户代码仍拥有当前账号权限，也可能创建自己的子进程或持久化副作用，只能在可信工作区中运行。
+- `lc test` 必须发现 `Solution` 的公开实例方法；没有可执行入口或没有任何输入都返回非零，不再把空脚本或 `run_cases()` 的空实现显示为通过。
+- 用户输入只经受限 AST 与 `ast.literal_eval` 解析为 `name = value` 字面量，不执行输入中的表达式、函数、变量或 `**kwargs`。
+- worker 每一组建立新的 `Solution` 实例，异常被转为受控失败；每组默认 1 秒，超时会终止 worker，下一组才重新启动。
+- worker 调用使用参数数组且不启用 Shell；交互输出经过终端控制字符过滤，`--stdin` 以 JSON 字符串转义输出，不展示 Python traceback。
+- 该控制不是沙箱。加载和调用用户代码仍拥有当前账号权限，也可能创建自己的子进程或持久化副作用，只能在可信工作区中运行。
 
 ### `solution.py` 非 UTF-8 traceback
 
@@ -135,4 +134,4 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 - 三平台真实交互初始化需要手动验收。
 - 真实 Cookie 和远程提交只在明确授权环境验证，报告必须脱敏。
 
-2026-07-31 的未发布 `lc test`、编码边界与提交退出码修复已在 Windows 通过 Ruff、Pyright、244 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session。
+2026-07-31 的未发布 `lc test` 交互执行、编码边界与提交退出码修复已在 Windows 通过 Ruff、Pyright、236 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session 或执行维护者的真实 solution.py。

@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -10,8 +11,6 @@ from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
 from leetcode_local_cli.problem import ProblemDetail
 from leetcode_local_cli.paths import AppPaths
 from leetcode_local_cli.workspace import (
-    LocalTestResult,
-    LocalTestStatus,
     SolutionFileInspection,
     SolutionFileStatus,
     WorkspaceError,
@@ -227,7 +226,9 @@ def test_solve_command_reports_rejected_workspace_target(monkeypatch) -> None:
     assert "Traceback" not in result.output
 
 
-def test_test_command_reports_missing_solution_without_running(monkeypatch) -> None:
+def test_test_command_reports_missing_solution_without_starting_worker(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         cli,
         "inspect_solution_file",
@@ -235,10 +236,8 @@ def test_test_command_reports_missing_solution_without_running(monkeypatch) -> N
     )
     monkeypatch.setattr(
         cli,
-        "run_local_tests",
-        lambda path, *, timeout: (_ for _ in ()).throw(
-            AssertionError("should not run")
-        ),
+        "LocalExecutionWorker",
+        lambda *args, **kwargs: pytest.fail("worker must not start"),
     )
 
     result = runner.invoke(cli.app, ["test"])
@@ -247,7 +246,7 @@ def test_test_command_reports_missing_solution_without_running(monkeypatch) -> N
     assert "未找到 solution.py" in result.output
 
 
-def test_test_command_reports_syntax_line_without_running(monkeypatch) -> None:
+def test_test_command_reports_syntax_line_without_starting_worker(monkeypatch) -> None:
     monkeypatch.setattr(
         cli,
         "inspect_solution_file",
@@ -272,10 +271,8 @@ def test_test_command_rejects_invalid_encoding_without_running(
     solution_file.write_bytes(b"\xff\xfeinvalid source")
     monkeypatch.setattr(
         cli,
-        "run_local_tests",
-        lambda path, *, timeout: (_ for _ in ()).throw(
-            AssertionError("invalid source must not run")
-        ),
+        "LocalExecutionWorker",
+        lambda *args, **kwargs: pytest.fail("worker must not start"),
     )
 
     result = runner.invoke(cli.app, ["test"])
@@ -285,83 +282,83 @@ def test_test_command_rejects_invalid_encoding_without_running(
     assert "Traceback" not in result.output
 
 
-def test_test_command_reports_unconfigured_local_tests(monkeypatch) -> None:
-    monkeypatch.setattr(
-        cli,
-        "inspect_solution_file",
-        lambda path: SolutionFileInspection(status=SolutionFileStatus.READY),
-    )
-    monkeypatch.setattr(
-        cli,
-        "run_local_tests",
-        lambda path, *, timeout: LocalTestResult(status=LocalTestStatus.NOT_CONFIGURED),
-    )
-
-    result = runner.invoke(cli.app, ["test"])
-
-    assert result.exit_code == 1
-    assert "尚未配置本地自测用例" in result.output
-    assert "本地自测执行成功" not in result.output
-
-
-@pytest.mark.parametrize(
-    ("status", "message"),
-    (
-        (LocalTestStatus.MISSING_ENTRY, "未找到可执行的 run_cases()"),
-        (LocalTestStatus.FAILED, "本地自测执行失败"),
-    ),
-)
-def test_test_command_maps_runner_failures_to_nonzero(
-    monkeypatch,
-    status: LocalTestStatus,
-    message: str,
+def test_test_command_interactively_runs_detected_solution_entry(
+    configured_app_paths,
 ) -> None:
-    monkeypatch.setattr(
-        cli,
-        "inspect_solution_file",
-        lambda path: SolutionFileInspection(status=SolutionFileStatus.READY),
-    )
-    monkeypatch.setattr(
-        cli,
-        "run_local_tests",
-        lambda path, *, timeout: LocalTestResult(
-            status=status,
-            stderr="controlled error\n",
-        ),
-    )
-
-    result = runner.invoke(cli.app, ["test"])
-
-    assert result.exit_code == 1
-    assert "controlled error" in result.output
-    assert message in result.output
-
-
-def test_test_command_displays_output_and_reports_success(monkeypatch) -> None:
-    received_timeouts = []
-    monkeypatch.setattr(
-        cli,
-        "inspect_solution_file",
-        lambda path: SolutionFileInspection(status=SolutionFileStatus.READY),
-    )
-    monkeypatch.setattr(
-        cli,
-        "run_local_tests",
-        lambda path, *, timeout: (
-            received_timeouts.append(timeout)
-            or LocalTestResult(
-                status=LocalTestStatus.PASSED,
-                stdout="[2, 7]\n",
-            )
-        ),
+    solution_file = configured_app_paths.solution_file
+    solution_file.parent.mkdir(parents=True)
+    solution_file.write_text(
+        """
+class Solution:
+    def twoSum(self, nums, target):
+        seen = {}
+        for index, value in enumerate(nums):
+            if target - value in seen:
+                return [seen[target - value], index]
+            seen[value] = index
+        return []
+""",
+        encoding="utf-8",
     )
 
-    result = runner.invoke(cli.app, ["test", "--timeout", "30"])
+    result = runner.invoke(
+        cli.app,
+        ["test"],
+        input="nums = [3, 2, 4], target = 6\n\n\n",
+    )
 
-    assert result.exit_code == 0
-    assert received_timeouts == [30.0]
-    assert "[2, 7]" in result.output
-    assert "本地自测执行成功" in result.output
+    assert result.exit_code == 0, result.output
+    assert "检测到入口：Solution.twoSum(nums, target)" in result.output
+    assert "[1, 2]" in result.output
+    assert "已成功执行 1 组输入" in result.output
+
+
+def test_test_command_rejects_empty_input_without_claiming_success(
+    configured_app_paths,
+) -> None:
+    solution_file = configured_app_paths.solution_file
+    solution_file.parent.mkdir(parents=True)
+    solution_file.write_text(
+        """
+class Solution:
+    def identity(self, value):
+        return value
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(cli.app, ["test"], input="\n\n")
+
+    assert result.exit_code == 1, result.output
+    assert "未执行任何本地输入" in result.output
+    assert "执行完成" not in result.output
+
+
+def test_test_command_continues_after_a_bad_input_and_returns_nonzero(
+    configured_app_paths,
+) -> None:
+    solution_file = configured_app_paths.solution_file
+    solution_file.parent.mkdir(parents=True)
+    solution_file.write_text(
+        """
+class Solution:
+    def echo(self, value):
+        return value
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["test"],
+        input="value = input()\nvalue = 3\n\n\n",
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "第 1 组执行失败" in result.output
+    assert "参数 value 必须是安全 Python 字面量" in result.output
+    assert "3" in result.output
+    assert "成功 1 组，失败 1 组" in result.output
 
 
 @pytest.mark.parametrize("timeout", ("0", "-1", "nan", "inf"))
@@ -372,34 +369,38 @@ def test_test_command_rejects_invalid_timeout(timeout: str) -> None:
     assert "大于 0 的有限秒数" in result.output
 
 
-def test_test_command_reports_timeout(monkeypatch) -> None:
-    received_timeouts = []
-    monkeypatch.setattr(
-        cli,
-        "inspect_solution_file",
-        lambda path: SolutionFileInspection(status=SolutionFileStatus.READY),
-    )
-    monkeypatch.setattr(
-        cli,
-        "run_local_tests",
-        lambda path, *, timeout: (
-            received_timeouts.append(timeout)
-            or LocalTestResult(
-                status=LocalTestStatus.TIMED_OUT,
-                stdout="partial output\n",
-            )
-        ),
+def test_test_command_stdin_outputs_json_lines(configured_app_paths) -> None:
+    solution_file = configured_app_paths.solution_file
+    solution_file.parent.mkdir(parents=True)
+    solution_file.write_text(
+        """
+class Solution:
+    def twoSum(self, nums, target):
+        return [0, 1]
+""",
+        encoding="utf-8",
     )
 
-    result = runner.invoke(cli.app, ["test"])
+    result = runner.invoke(
+        cli.app,
+        ["test", "--stdin"],
+        input="nums = [2, 7], target = 9\nnums = input()\n",
+    )
 
-    assert result.exit_code == 1
-    assert received_timeouts == [1.0]
-    assert "partial output" in result.output
-    assert "执行时间超过 1 秒" in result.output
+    assert result.exit_code == 1, result.output
+    lines = [json.loads(line) for line in result.output.splitlines()]
+    assert lines[0] == {
+        "case": 1,
+        "ok": True,
+        "result": [0, 1],
+        "result_is_json": True,
+    }
+    assert lines[1]["case"] == 2
+    assert lines[1]["ok"] is False
+    assert lines[-1] == {"kind": "summary", "total": 2, "successful": 1, "failed": 1}
 
 
-def test_submit_does_not_run_local_tests(monkeypatch) -> None:
+def test_submit_does_not_start_local_execution_worker(monkeypatch) -> None:
     monkeypatch.setattr(
         cli,
         "submit_current_solution",
@@ -408,7 +409,7 @@ def test_submit_does_not_run_local_tests(monkeypatch) -> None:
     monkeypatch.setattr(cli, "render_submission_result", lambda result: None)
     monkeypatch.setattr(
         cli,
-        "run_local_tests",
+        "LocalExecutionWorker",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("submit must not execute local tests")
         ),

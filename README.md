@@ -19,7 +19,7 @@
 - 使用 `lc init` 配置的默认工作区和单个 `solution.py`。
 - `lc solve <题号>` 生成可编辑的 Python 解题模板。
 - 生成模板后会按当前系统尝试打开 `solution.py`。
-- `lc test` 在独立子进程中执行用户编写的 `run_cases()`，展示自测输出，并对空实现、异常和超时返回非零状态。
+- `lc test` 自动发现 `Solution` 的公开方法，交互执行用户输入的参数并展示实际返回值；异常和超时返回非零状态。
 - `lc doctor` 一次检查 Session 文件、站点连通性、Cookie 登录态和本地解题文件。
 - `lc submit` 提交 marker 区域代码到 LeetCode 中文站，并轮询判题结果。
 - 生成模板时写入 `problem_id` 和 `submit_question_id`，避免展示题号和 LeetCode 内部提交 ID 混用。
@@ -88,7 +88,7 @@ lc status
 lc get 1
 lc solve 1
 lc test
-# 慢用例可显式调整总超时
+# 慢用例可显式调整每组调用超时
 lc test --timeout 30
 lc submit
 ```
@@ -105,7 +105,8 @@ lc submit
 | `lc show --limit 20 --skip 0` | 分页展示题目索引，`limit` 单次最大为 100 |
 | `lc get <题号>` | 在线展示题目详情 |
 | `lc solve <题号>` | 原子覆盖生成默认工作区的 `solution.py` |
-| `lc test [--timeout 秒数]` | 执行一次 `run_cases()`；默认总超时 1 秒 |
+| `lc test [--timeout 秒数]` | 交互执行 `Solution` 的首个公开方法；默认每组调用 1 秒 |
+| `lc test --stdin` | 从标准输入逐行读取参数，并以 JSON Lines 输出每组结果，适合 AI/CI |
 | `lc doctor` | 诊断 Session、网络、Cookie 和 `solution.py`，默认不执行代码 |
 | `lc doctor --run-solution` | 额外运行当前工作区的 `solution.py` |
 | `lc submit` | 提交当前 `solution.py` 的提交区域代码；只有 Accepted 返回退出码 0 |
@@ -142,21 +143,37 @@ class Solution:
 
 之间的代码。
 
-## 本地自测契约
+## 本地交互执行
 
-`run_cases()` 是用户维护的可选本地调试入口。你可以在其中直接构造变量、打印结果并编写 `assert`：
+`lc test` 会加载 `solution.py`，在 `Solution` 类中按定义顺序选择第一个不以 `_` 开头的实例方法。把需要提交的方法放在最前面；类内辅助方法请命名为 `_dfs`、`_helper` 等，或定义在主方法后面。文件中的其他类不会参与选择。
 
-```python
-def run_cases() -> None:
-    solution = Solution()
-    result = solution.twoSum([2, 7, 11, 15], 9)
-    print(result)
-    assert result == [0, 1]
+以“两数之和”为例：
+
+```text
+$ lc test
+检测到入口：Solution.twoSum(nums: List[int], target: int) -> List[int]
+请输入参数，例如：nums = [3, 2, 4], target = 6
+连续两次直接回车退出。
+参数 > nums = [3, 2, 4], target = 6
+第 1 组执行完成
+返回值： [1, 2]
+参数 >
+再次直接回车确认退出；输入参数可继续。
+参数 >
+本地交互执行结束（已成功执行 1 组输入）
 ```
 
-主动执行 `lc test` 时，CLI 会在独立 Python 子进程中加载 `solution.py`，并且只调用一次同步、无参数的 `run_cases()`。以下情况都会返回退出码 1：入口缺失或不可调用、模板仍是默认空实现、断言失败、运行时异常，以及超过默认 1 秒总超时。用户的 stdout 和简化错误会显示，但不会输出 Python traceback。测试子进程不读取交互式终端输入；测试变量应直接写在 `run_cases()` 中。`--timeout` 只接受大于 0 的有限秒数，非法参数返回退出码 2。
+每次输入是一组 `name = value` 参数，例如 `nums = [3, 2, 4], target = 6`。第一版只接受安全 Python 字面量：数字、字符串、列表、字典、元组、`True`、`False` 和 `None`；不执行输入中的函数、表达式或变量名。无参数方法可输入 `()`。链表和二叉树暂不自动转换。
 
-本地自测不是远程提交的前置条件。确认当前代码正确时可以直接执行 `lc submit`；提交命令不会检查或运行 `run_cases()`，而且 marker 外的本地测试代码不会发送到 LeetCode。
+每一组调用都有独立的默认 1 秒超时；超时后 worker 会被终止，并在下一组输入前重新启动。输入格式错误、调用异常或超时会以红色显示，但不会中断交互；只要出现过任一错误，最终退出码为 1。没有执行任何输入同样返回 1。退出码 0 只表示所有已输入调用都正常完成，**不表示算法已经被断言验证为正确**。`--timeout` 只接受大于 0 的有限秒数，非法参数返回退出码 2。
+
+AI 或 CI 可使用不带 Rich 表格的 JSON Lines 模式：
+
+```shell
+printf 'nums = [3, 2, 4], target = 6\n' | lc test --stdin
+```
+
+它逐行读取相同的参数格式，为每组输出一行 JSON，最后输出一条 `kind: "summary"` 汇总记录；不创建 `cases.json`。本地执行不是远程提交的前置条件：`lc submit` 不运行 `lc test`，也不会执行或提交 marker 外的辅助代码。
 
 ## 当前限制
 
@@ -169,7 +186,7 @@ def run_cases() -> None:
 - `lc solve` 会强制覆盖普通 `solution.py`，但拒绝符号链接、断链、目录、目录链接和 Windows reparse point。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
 - `solution.py` 只接受 UTF-8，并兼容 UTF-8 BOM；其他编码会在 `test`、`doctor` 和 `submit` 中受控失败，不执行文件、不发送提交请求，也不展示 `UnicodeDecodeError` traceback。
-- `lc test` 默认采用 1 秒严格总超时，近似 LeetCode 的限时运行体验，但它还包含本地 Python 进程启动、导入和测试数据构造时间，并不等同于远端判题的算法运行时间；慢用例可显式使用 `--timeout`。本地代码仍以当前用户权限运行，不是安全沙箱。
+- `lc test` 默认对每一组调用限制 1 秒；这只提供本地交互反馈，不等同于远端题目的算法时间限制。超时后的下一组会重启 worker。链表、二叉树和其他 LeetCode 专用对象暂不自动转换。本地代码仍以当前用户权限运行，不是安全沙箱。
 - `lc submit` 只有明确获得 `Accepted` 时返回退出码 0；其他判题结果、轮询超时和无法识别的结果返回 1。当前轮询仍使用固定 10 次查询，尚未改为稳定的总超时模型。
 - 在 Git 仓库根目录执行 `lc init` 会创建 `.leetcode-local-cli.toml`，项目当前不会自动修改 `.gitignore`；该标记的提交与忽略策略仍在确认。
 - 树、链表等题型中，LeetCode 模板里的 `TreeNode` / `ListNode` 定义默认保持注释状态；如需本地构造用例，请自行取消注释并编写测试数据。
@@ -236,11 +253,12 @@ uv run ruff check solution.py
 ```text
 src/leetcode_local_cli/
   auth.py       Cookie 读取与本地 session
-  _test_runner.py 隔离加载并执行 run_cases 的子进程入口
+  _test_runner.py 持久本地执行 worker 的子进程入口
   client.py     LeetCode 中文站 HTTP 客户端
   cli.py        Typer 命令入口
   config.py     版本化配置读取与工作区初始化
   doctor.py     本地环境、网络与登录态诊断
+  local_testing.py 安全参数字面量解析与 worker 通信编码
   paths.py      跨平台路径与 AppPaths 运行上下文
   problem.py    题号解析与题目数据标准化
   safe_files.py 非普通目标拒绝与原子文件写入
@@ -248,7 +266,7 @@ src/leetcode_local_cli/
   service.py    应用层流程编排
   ui.py         Rich 终端输出
   version.py    已安装发行版版本读取
-  workspace.py  solution.py 生成、解析、运行与本地测试结果映射
+  workspace.py  solution.py 生成、解析、运行与本地执行 worker 映射
 scripts/
   install.sh    Linux/macOS 一键安装器
   install.ps1   Windows PowerShell 一键安装器

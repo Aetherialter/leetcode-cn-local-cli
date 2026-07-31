@@ -36,7 +36,7 @@ def test_build_solution_content_writes_metadata_and_submit_markers(tmp_path) -> 
     assert "from typing import Any, Dict, List, Optional, Set, Tuple" in content
     assert "# @lc submit_begin" in content
     assert "# @lc submit_end" in content
-    assert "def run_cases() -> None:" in content
+    assert "def run_cases() -> None:" not in content
     solution_file = tmp_path / "solution.py"
     solution_file.write_text(content, encoding="utf-8")
     _, submission_code = workspace.parse_solution_submission(solution_file)

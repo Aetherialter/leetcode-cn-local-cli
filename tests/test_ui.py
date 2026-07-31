@@ -92,6 +92,19 @@ def test_all_dynamic_renderers_treat_external_markup_as_plain_text(
     ui.warning(MARKUP_PAYLOAD)
     ui.error(MARKUP_PAYLOAD)
     ui.render_local_test_output(MARKUP_PAYLOAD)
+    ui.render_local_execution_result(
+        case_index=1,
+        result_text=MARKUP_PAYLOAD,
+        stdout=MARKUP_PAYLOAD,
+        stderr=MARKUP_PAYLOAD,
+        arguments_after_text=MARKUP_PAYLOAD,
+    )
+    ui.render_local_execution_error(
+        case_index=2,
+        error_detail=MARKUP_PAYLOAD,
+        stdout=MARKUP_PAYLOAD,
+        stderr=MARKUP_PAYLOAD,
+    )
     ui.render_profile(
         {
             "username": MARKUP_PAYLOAD,

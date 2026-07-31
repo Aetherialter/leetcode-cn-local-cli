@@ -44,13 +44,13 @@
 - `lc doctor` 默认不执行用户代码；只有 `--run-solution` 才执行。
 - `lc solve` 仍表示切换当前题目，因此可以无确认覆盖普通 `solution.py`。
 
-### 未发布：`lc test` 可靠性修复
+### 未发布：`lc test` 交互执行与可靠性修复
 
-- `lc test` 现在在独立子进程中以非 `__main__` 名称加载 `solution.py`，并显式调用一次同步、无参数的 `run_cases()`。
-- `run_cases()` 缺失、不可调用、仍为空实现、断言失败、运行时异常或超时都会返回退出码 1，不再产生“假通过”。
-- 默认总超时为 1 秒，提供类 LeetCode 的严格限时体验；`--timeout` 可接受大于 0 的有限秒数，非法参数返回退出码 2。
-- stdout 和简化错误会经过终端文本过滤后展示，用户异常不输出 traceback。
-- `run_cases()` 仍是可选的本地调试能力；`lc submit` 不检查或执行它，并继续只提交 marker 区域。
+- `lc test` 在独立持久 worker 中加载 `solution.py`，按定义顺序发现 `Solution` 的第一个公开实例方法；不需要、也不会调用 `run_cases()`。
+- 交互模式输入 `name = value` 参数并展示实际返回值；只允许安全 Python 字面量。每一组使用新的 `Solution` 实例，输入错误、异常或超时会显示受控错误但不终止下一组输入。
+- 默认每组调用限时 1 秒；超时后 worker 被终止，下一组自动重启。连续两次空输入退出；没有输入或任一组出错，最终退出码为 1。
+- `lc test --stdin` 使用同一输入格式、每组一行 JSON 和最终 summary，供 AI/CI 读取；不创建 `cases.json`，也不使用 Rich 表格。
+- 退出码 0 只表示所有已输入调用正常结束，不把“未写断言”伪装为算法正确性。`lc submit` 不调用本地执行，继续只提交 marker 区域。
 
 ### 未发布：`solution.py` 编码错误边界
 
@@ -68,7 +68,7 @@
 
 ## 当前开发阶段
 
-v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实现、发布并完成 Windows 与 Linux/WSL 双平台验收。当前源码已完成验收中 `lc test` 假通过、无限等待、非 UTF-8 traceback 和提交假成功的修复；提交轮询仍需迁移到稳定总超时模型，之后再进入 v0.9 的领域模型、异常边界和 Python API 预览。
+v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实现、发布并完成 Windows 与 Linux/WSL 双平台验收。当前源码完成了 `lc test` 假通过、无限等待、非 UTF-8 traceback 和提交假成功的修复，并把本地测试改为显式的交互执行；提交轮询仍需迁移到稳定总超时模型，之后再进入 v0.9 的领域模型、异常边界和 Python API 预览。
 
 2026-07-30 验收结果：
 
@@ -80,9 +80,9 @@ v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实
 2026-07-31 当前源码验证：
 
 - Ruff format、Ruff lint 和 Pyright 全部通过。
-- Windows 完整 pytest 为 244 passed、13 skipped。
-- wheel 与源码包构建通过，构建产物包含内部 `_test_runner.py` 和共享 `solution_source.py`；`lc --version` 和 `lc test --help` 入口通过。
-- 定向测试确认默认/旧/等价空实现不会假通过，已填写入口只执行一次，stdout、异常、非交互 stdin、中文路径、超时和提交隔离符合 `PB-C12`。
+- Windows 完整 pytest 为 236 passed、13 skipped。
+- wheel 与源码包构建通过，构建产物包含内部 `_test_runner.py`、`local_testing.py` 和共享 `solution_source.py`；`lc --version` 和 `lc test --help` 入口通过。
+- 定向测试确认入口发现、安全字面量、逐组新实例、返回值/原地修改回显、异常、超时重启、交互退出、JSON Lines stdin 和提交隔离符合 `PB-C12`。
 - 定向测试确认非法编码在 test、Doctor、runner 和 submit 中受控失败，UTF-8 BOM 正常读取，符合 `PB-C13`。
 - 定向测试确认 Accepted 返回 0，Wrong Answer、Time Limit Exceeded、缺少状态和轮询超时返回 1，符合 `PB-C14`。
 
@@ -90,7 +90,7 @@ v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实
 
 ### 下一批产品决策
 
-- `lc test --verbose` 与 `lc doctor --run-solution` 的扩展调试输出策略。
+- `lc test` 对 `ListNode`、`TreeNode` 等 LeetCode 专用类型的输入转换策略，以及 `--verbose` 与 `lc doctor --run-solution` 的扩展调试输出策略。
 - `lc submit` 的固定次数轮询改为稳定总超时。
 - 提交前静态校验范围。
 - 编辑器配置优先级和安全命令模型。

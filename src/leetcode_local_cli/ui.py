@@ -100,6 +100,51 @@ def render_local_test_output(output: str) -> None:
     console.print(_external_text(output), end=end)
 
 
+def render_local_execution_result(
+    *,
+    case_index: int,
+    result_text: str,
+    stdout: str,
+    stderr: str,
+    arguments_after_text: str | None,
+) -> None:
+    success(f"第 {case_index} 组执行完成")
+    if stdout:
+        info("标准输出：")
+        render_local_test_output(stdout)
+    if stderr:
+        warning("标准错误：")
+        render_local_test_output(stderr)
+    info("返回值：")
+    render_local_test_output(result_text)
+    if arguments_after_text is not None:
+        info("调用后参数：")
+        render_local_test_output(arguments_after_text)
+
+
+def render_local_execution_error(
+    *,
+    case_index: int,
+    error_detail: str,
+    stdout: str = "",
+    stderr: str = "",
+) -> None:
+    error(f"第 {case_index} 组执行失败")
+    console.print(_external_text(f"原因：{error_detail}", style="red"))
+    if stdout:
+        console.print(_external_text("标准输出：", style="red"))
+        console.print(
+            _external_text(stdout, style="red"),
+            end="" if stdout.endswith("\n") else "\n",
+        )
+    if stderr:
+        console.print(_external_text("标准错误：", style="red"))
+        console.print(
+            _external_text(stderr, style="red"),
+            end="" if stderr.endswith("\n") else "\n",
+        )
+
+
 def render_profile(profile: dict[str, Any]) -> None:
     solved = profile["solved"]
     total = profile["total"]
