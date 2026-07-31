@@ -93,11 +93,11 @@ def error(message: str) -> None:
     console.print(_external_text(message, style="bold red"))
 
 
-def render_local_test_output(output: str) -> None:
+def render_local_test_output(output: str, *, style: str = "") -> None:
     if not output:
         return
     end = "" if output.endswith("\n") else "\n"
-    console.print(_external_text(output), end=end)
+    console.print(_external_text(output, style=style), end=end)
 
 
 def render_local_execution_result(
@@ -116,7 +116,7 @@ def render_local_execution_result(
         warning("标准错误：")
         render_local_test_output(stderr)
     info("返回值：")
-    render_local_test_output(result_text)
+    render_local_test_output(result_text, style="white")
     if arguments_after_text is not None:
         info("调用后参数：")
         render_local_test_output(arguments_after_text)

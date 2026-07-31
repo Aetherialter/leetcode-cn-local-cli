@@ -181,6 +181,27 @@ def test_terminal_control_characters_are_removed_from_rendered_output(
     assert "forged" in rendered or "click" in rendered
 
 
+def test_local_execution_return_value_uses_white_style(monkeypatch) -> None:
+    styles: list[str] = []
+    original = ui._external_text
+
+    def capture_style(payload: str, *, style: str = ""):
+        styles.append(style)
+        return original(payload, style=style)
+
+    monkeypatch.setattr(ui, "_external_text", capture_style)
+
+    ui.render_local_execution_result(
+        case_index=1,
+        result_text="[1, 2]",
+        stdout="",
+        stderr="",
+        arguments_after_text=None,
+    )
+
+    assert "white" in styles
+
+
 def test_external_markup_remains_readable_without_color(monkeypatch) -> None:
     output = StringIO()
     monkeypatch.setattr(
