@@ -11,6 +11,7 @@ WORKSPACE_CONFIG_FILENAME = ".leetcode-local-cli.toml"
 SOLUTION_FILENAME = "solution.py"
 SESSION_DIRECTORY_NAME = ".leetcode_local_cli"
 SESSION_FILENAME = "session.json"
+DEVTOOLS_ACTIVE_PORT_FILENAME = "DevToolsActivePort"
 
 
 def normalize_workspace_path(path: str | Path) -> Path:
@@ -53,6 +54,81 @@ def get_user_config_directory(
 
 def get_user_config_file() -> Path:
     return get_user_config_directory() / USER_CONFIG_FILENAME
+
+
+def get_chrome_user_data_directory(
+    *,
+    environment: Mapping[str, str] | None = None,
+    home: Path | None = None,
+    platform: str | None = None,
+    os_name: str | None = None,
+) -> Path:
+    """Return the default Google Chrome Stable user data directory."""
+    active_environment = os.environ if environment is None else environment
+    active_home = Path.home() if home is None else home
+    active_platform = sys.platform if platform is None else platform
+    active_os_name = os.name if os_name is None else os_name
+
+    if active_os_name == "nt":
+        local_app_data = active_environment.get("LOCALAPPDATA")
+        if local_app_data:
+            local_app_data_path = Path(local_app_data)
+            if local_app_data_path.is_absolute():
+                return local_app_data_path / "Google" / "Chrome" / "User Data"
+        return active_home / "AppData" / "Local" / "Google" / "Chrome" / "User Data"
+
+    if active_platform == "darwin":
+        return active_home / "Library" / "Application Support" / "Google" / "Chrome"
+
+    xdg_config_home = active_environment.get("XDG_CONFIG_HOME")
+    base_directory = (
+        Path(xdg_config_home)
+        if xdg_config_home and Path(xdg_config_home).is_absolute()
+        else active_home / ".config"
+    )
+    return base_directory / "google-chrome"
+
+
+def get_chrome_devtools_active_port_file() -> Path:
+    return get_chrome_user_data_directory() / DEVTOOLS_ACTIVE_PORT_FILENAME
+
+
+def get_edge_user_data_directory(
+    *,
+    environment: Mapping[str, str] | None = None,
+    home: Path | None = None,
+    platform: str | None = None,
+    os_name: str | None = None,
+) -> Path:
+    """Return the default Microsoft Edge user data directory."""
+    active_environment = os.environ if environment is None else environment
+    active_home = Path.home() if home is None else home
+    active_platform = sys.platform if platform is None else platform
+    active_os_name = os.name if os_name is None else os_name
+
+    if active_os_name == "nt":
+        local_app_data = active_environment.get("LOCALAPPDATA")
+        base_directory = (
+            Path(local_app_data)
+            if local_app_data and Path(local_app_data).is_absolute()
+            else active_home / "AppData" / "Local"
+        )
+        return base_directory / "Microsoft" / "Edge" / "User Data"
+
+    if active_platform == "darwin":
+        return active_home / "Library" / "Application Support" / "Microsoft Edge"
+
+    xdg_config_home = active_environment.get("XDG_CONFIG_HOME")
+    base_directory = (
+        Path(xdg_config_home)
+        if xdg_config_home and Path(xdg_config_home).is_absolute()
+        else active_home / ".config"
+    )
+    return base_directory / "microsoft-edge"
+
+
+def get_edge_devtools_active_port_file() -> Path:
+    return get_edge_user_data_directory() / DEVTOOLS_ACTIVE_PORT_FILENAME
 
 
 @dataclass(frozen=True)

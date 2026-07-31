@@ -1,8 +1,8 @@
 # 当前架构
 
-最近更新：2026-07-31
+最近更新：2026-08-01
 
-本文描述 `v0.8.0` 发布后当前源码的真实架构。长期 API、双站点和 UI 方向见 [PROJECT_DESIGN](PROJECT_DESIGN.md)，未实现内容不得视为当前能力。
+本文描述 `v0.9.0` 的真实架构。长期 API、双站点和 UI 方向见 [PROJECT_DESIGN](PROJECT_DESIGN.md)，未实现内容不得视为当前能力。
 
 ## 整体架构
 
@@ -17,6 +17,7 @@ flowchart TD
     CONFIG --> WORKCFG["工作区 .leetcode-local-cli.toml"]
     CLI --> SERVICE["service 流程编排"]
     CLI --> AUTH["auth 登录与 Session"]
+    CLI --> BROWSER["浏览器选择与授权发现"]
     CLI --> WORKSPACE["workspace 解题文件"]
     SERVICE --> AUTH
     SERVICE --> CLIENT["LeetCodeClient"]
@@ -25,6 +26,9 @@ flowchart TD
     WORKSPACE --> TESTRUNNER["持久本地执行 worker"]
     TESTRUNNER --> SOLUTION
     AUTH --> SESSION["工作区 Session JSON"]
+    BROWSER --> CHROME["日常 Chrome DevToolsActivePort"]
+    BROWSER --> EDGE["日常 Edge DevToolsActivePort"]
+    BROWSER --> AUTH
     WORKSPACE --> SOLUTION["工作区 solution.py"]
     AUTH --> SAFEFILES["safe_files 安全写入"]
     CONFIG --> SAFEFILES
@@ -44,11 +48,12 @@ flowchart TD
 | `safe_files.py` | 普通目标校验、链接/reparse 拒绝、排他创建、随机临时文件和原子替换 | 不理解 LeetCode 业务，只提供文件系统安全原语 |
 | `solution_source.py` | 统一读取 UTF-8/UTF-8 BOM 的 `solution.py`，把解码失败转换为专用异常 | 不猜测编码、不替换非法字节、不修改用户文件 |
 | `cli.py` | 命令、参数、交互确认、路径解析、错误和退出码映射 | `--help`、`--version` 不解析工作区；业务命令需要有效默认工作区 |
-| `auth.py` | Chrome/手动 Cookie、Session 保存读取与静态检查 | Session 路径必须由调用者传入；当前只支持 `leetcode.cn` |
+| `browser.py` | 浏览器选择、日常 Chrome/Edge 可执行文件与 `DevToolsActivePort`、浏览器身份检查 | 不读取 Cookie、不使用 Shell、不拥有或关闭日常浏览器 |
+| `auth.py` | 浏览器无关的受限 DevTools Cookie 请求、手动 Cookie，以及 Session 保存读取与静态检查 | DevTools 只连接回环端口；Session 路径必须由调用者传入；当前只支持 `leetcode.cn` |
 | `workspace.py` | 模板、原子写入、打开、执行、静态检查和提交 marker 解析 | 所有公开工作区操作必须接收明确文件路径 |
 | `local_testing.py` | 安全解析 `name = value` 参数，并编码 worker JSON 协议 | 只接受受支持的 Python 字面量；不执行用户输入 |
 | `_test_runner.py` | 持久 worker：加载解题文件、发现 `Solution` 首个公开实例方法并处理逐组调用 | 每组创建新的 `Solution` 实例；不接收 Shell 或直接 Python 表达式 |
-| `service.py` | 账号、题目、Doctor 和提交流程编排 | 仍直接依赖 Typer 与 UI，是 v0.9 后需要继续解耦的过渡层 |
+| `service.py` | 账号、题目、Doctor 和提交流程编排 | 仍直接依赖 Typer 与 UI，是后续架构阶段需要继续解耦的过渡层 |
 | `doctor.py` | 把 Session、工作区和远端状态转成结构化检查结果 | 默认不执行用户代码 |
 | `client.py` | 中文站 HTTP、GraphQL、提交和判题查询 | 同步 httpx、固定 Python3 |
 | `problem.py` | 题号解析与题目模型标准化 | 基本是无 IO 的纯逻辑 |
@@ -113,7 +118,11 @@ CLI 命令
 
 ### 登录
 
-`lc login` 解析默认工作区后读取浏览器或手动 Cookie，在线验证成功才把 Session 原子写入 `AppPaths.session_file`。保存使用私有目录权限（POSIX `0700`）和文件权限（POSIX `0600`），同时拒绝链接和 reparse 目标。
+`lc login` 解析默认工作区后，默认先尝试当前日常 Chrome，再尝试当前日常 Edge。两条路径由 `browser.py` 共用同一授权发现逻辑：读取各自默认用户数据目录中的普通 `DevToolsActivePort`；缺少授权时用 `--new-window` 打开 `chrome://inspect/#remote-debugging` 或 `edge://inspect/#remote-debugging` 和 LeetCode，等待用户勾选 **Allow remote debugging for this browser instance**。授权前不会产生端口文件，CLI 只轮询等待，不尝试绕过这一步用户同意。
+
+approval-only 端点可能让传统 `/json/version` 返回 404，因此 CLI 直接连接文件给出的浏览器 WebSocket，在同一连接中依次调用 `Browser.getVersion`、`Target.getTargets`、`Target.attachToTarget` 和页面会话内的 `Network.getCookies`。Chrome 身份必须报告 `Chrome/`，Edge 身份必须报告 `Edg/`。`DevToolsActivePort` 可能在浏览器关闭后暂时遗留，因此“文件存在”不等于“实例可连接”：端点暂时不可达或后台实例返回 403 时，CLI 只打开一次可见窗口，并在同一个 180 秒单调时钟预算内重新读取文件、有限重试临时连接错误；浏览器身份、协议结构等确定性错误立即失败。日常浏览器不是 CLI 持有的进程，因此任何结果下都保持运行。
+
+显式 `--devtools-port` 仍由 `auth.py` 访问 `127.0.0.1:<端口>/json/list` 并选择页面 WebSocket。日常浏览器则使用上段的 approval-only 浏览器 WebSocket。所有路径都验证端点属于同一个回环端口，调用 `Network.getCookies` 时仅请求 `https://leetcode.cn/`，并只提取两个必需 Cookie，随后复用相同的在线验证和 Session 原子写入链路。HTTP 发现禁用环境代理和重定向。CLI 不关闭日常浏览器或显式外部端口对应的实例。
 
 ### 题目生成与写入
 
@@ -134,11 +143,12 @@ CLI 命令
 
 ```text
 __main__ -> cli
-cli -> config, paths, auth, service, ui, workspace
+cli -> config, paths, browser, auth, service, ui, workspace
+browser -> paths, safe_files, auth, subprocess
 config -> paths, safe_files, tomllib
 service -> paths, auth, client, doctor, problem, ui, workspace, typer
 doctor -> auth, client result types, workspace
-auth -> browser_cookie3, safe_files
+auth -> httpx, websockets, safe_files
 workspace -> safe_files, local_testing, subprocess, platform file opener
 workspace -> solution_source
 _test_runner -> local_testing, solution_source, Python standard library

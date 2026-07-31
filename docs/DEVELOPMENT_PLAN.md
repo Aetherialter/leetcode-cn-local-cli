@@ -1,6 +1,6 @@
 # 长期开发计划
 
-最近更新：2026-07-31
+最近更新：2026-08-01
 
 本文把当前源码、安全审计、产品边界和长期设计整理为唯一的可执行路线。它不替代具体功能开始前的需求分析，也不擅自决定 [产品边界与待定决策](PRODUCT_BOUNDARIES.md)中的开放问题。
 
@@ -32,9 +32,10 @@
 
 ### P1：下一个稳定版本的阻断项
 
-- [当前源码已完成，待发布] 实现 `lc test` 的自动入口发现、安全参数输入、逐组执行、JSON Lines stdin 和默认每组 1 秒超时；`ListNode`/`TreeNode` 转换与 verbose/Doctor 扩展输出仍单独待定。
-- [当前源码已完成，待发布] 只有 Accepted 返回 0，非 Accepted 与轮询超时返回 1；固定次数轮询迁移到总超时仍待完成。
-- [当前源码已完成，待发布] 非 UTF-8 在 `test`、`doctor`、`submit` 中受控失败；UTF-8 BOM 保持兼容。
+- [v0.9.0 已完成] 普通 `lc login` 自动按用户授权的日常 Chrome、日常 Edge、手动 Cookie 回退，并提供显式浏览器和 DevTools 入口；两种浏览器共用 approval-only WebSocket、遗留端点启动恢复与后台实例 403 恢复逻辑，保持回环、浏览器身份、站点范围、秘密输出和非所有权边界。
+- [v0.9.0 已完成] 实现 `lc test` 的自动入口发现、安全参数输入、逐组执行、JSON Lines stdin 和默认每组 1 秒超时；`ListNode`/`TreeNode` 转换与 verbose/Doctor 扩展输出仍单独待定。
+- [v0.9.0 已完成] 只有 Accepted 返回 0，非 Accepted 与轮询超时返回 1；固定次数轮询迁移到总超时仍待完成。
+- [v0.9.0 已完成] 非 UTF-8 在 `test`、`doctor`、`submit` 中受控失败；UTF-8 BOM 保持兼容。
 - 决定 `.leetcode-local-cli.toml` 在 Git 工作区中的提交或忽略语义，避免初始化后长期出现未跟踪标记。
 - 重新设计系统秘密存储，替换 v0.8 的阶段性明文 Session。
 - 为普通分支和 Pull Request 增加 CI。

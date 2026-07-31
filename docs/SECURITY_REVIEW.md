@@ -2,7 +2,7 @@
 
 初次审计日期：2026-07-20
 
-最近更新：2026-07-31
+最近更新：2026-08-01
 
 审计范围：`src/`、安装脚本、发布工作流、运行时依赖，以及 v0.8 路径、配置、工作区与 Session 变更。
 
@@ -43,6 +43,17 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 - POSIX 上目录使用 `0700`、文件使用 `0600`。
 - JSON 序列化在写入前完成，失败不会产生 Session 文件。
 - Doctor、异常和测试结果只包含安全元数据或缺失 Cookie 名称。
+
+### Chrome 与 Edge DevTools 授权登录
+
+- 普通 `lc login` 依次尝试用户在 `chrome://inspect/#remote-debugging`、`edge://inspect/#remote-debugging` 明确勾选允许调试的当前日常 Chrome 和 Edge；指定 `--browser` 后不访问另一浏览器。
+- 两种浏览器都只读取官方默认用户目录中受普通文件检查保护的 `DevToolsActivePort`，限制文件大小并验证端口、控制路径、回环端点，以及通过 `Browser.getVersion` 返回的 `Chrome/` 或 `Edg/` 身份；不读取或解密 Cookie 数据库。
+- approval-only 连接必须由用户先开启实例调试，再在连接确认框中允许；浏览器未运行、遗留端点暂时不可达或 403 时只打开一次可见窗口，并在 180 秒总预算内重读端点和有限重试连接，不循环打开窗口。浏览器身份、协议等确定性错误不重试。CLI 不创建专用配置，不持有也不关闭日常 Chrome 或 Edge。
+- `--devtools-port` 必须和明确的 Chrome 或 Edge 选择组合，防止把未知本机服务当成目标浏览器；无人使用的旧实验参数 `--chrome-debug-port` 已删除，避免继续暴露过时的 Chrome 专用语义。
+- HTTP 发现固定使用 `127.0.0.1`、禁用环境代理与重定向；返回的 WebSocket 必须是相同端口的 `ws://127.0.0.1` 或 `ws://[::1]`，不得包含凭据。
+- 使用页面级 `Network.getCookies` 并把 URL 限定为 `https://leetcode.cn/`，不调用返回全浏览器 Cookie 的 `Storage.getCookies` 或已弃用 `Network.getAllCookies`。
+- 响应只提取域名边界匹配的 `LEETCODE_SESSION` 与 `csrftoken`；协议错误、缺字段、超时和非本机端点均受控失败，Cookie 值不进入输出。
+- DevTools 端点具有完整浏览器控制能力。Chrome 和 Edge 都是用户主动授权的日常实例，CLI 无权替用户关闭，因此用户应在完成后撤销 Remote debugging 或关闭浏览器。两种路径都不能消除同一台机器上其他进程在授权窗口期访问端点的固有风险。
 
 ### 初始化与安装器
 
@@ -134,4 +145,4 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 - 三平台真实交互初始化需要手动验收。
 - 真实 Cookie 和远程提交只在明确授权环境验证，报告必须脱敏。
 
-2026-07-31 的未发布 `lc test` 交互执行、模板占位、编码边界与提交退出码修复已在 Windows 通过 Ruff、Pyright、239 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session 或执行维护者的真实 solution.py。
+2026-08-01 的 v0.9 Chrome/Edge DevTools 登录、`lc test` 交互执行、模板占位、编码边界与提交退出码修复已在 Windows 通过 Ruff、Pyright、288 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；日常 Chrome/Edge approval-only 共享逻辑、浏览器关闭后的遗留端点恢复和启动竞态重试通过自动化测试，Chrome `150.0.7871.187` 与 Edge `150.0.4078.105` 均完成一次用户明确允许的真实登录验收，Cookie 值未进入终端或报告。未执行维护者的真实 solution.py 或远程提交。

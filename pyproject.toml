@@ -1,6 +1,6 @@
 [project]
 name = "leetcode-local-cli"
-version = "0.8.0"
+version = "0.9.0"
 description = "Local coding workflow CLI for LeetCode CN."
 readme = "README.md"
 license = "MIT"
@@ -18,10 +18,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "browser-cookie3>=0.20.1",
     "httpx>=0.28.1",
     "rich>=15.0.0",
     "typer>=0.25.1",
+    "websockets>=15.0",
 ]
 
 [project.scripts]

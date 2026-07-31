@@ -2,15 +2,33 @@ import json
 import math
 import sys
 from pathlib import Path
+from time import monotonic, sleep
 from typing import Annotated
 
 from typer import Argument, BadParameter, Exit, Option, Typer, confirm, echo, prompt
 
 from leetcode_local_cli.auth import (
+    DevToolsApprovalRejected,
+    DevToolsConnectionUnavailable,
+    DevToolsError,
     SessionFileError,
-    get_cookies_from_browser,
+    get_cookies_from_browser_endpoint,
+    get_cookies_from_devtools,
     get_cookies_from_input,
     save_session,
+)
+from leetcode_local_cli.browser import (
+    BROWSER_LOGIN_TIMEOUT_SECONDS,
+    BrowserAuthorizationPending,
+    BrowserDevToolsEndpoint,
+    BrowserError,
+    BrowserKind,
+    get_browser_display_name,
+    get_browser_identity_prefixes,
+    get_browser_session_source,
+    open_browser_authorization_pages,
+    read_browser_devtools_endpoint,
+    validate_devtools_browser,
 )
 from leetcode_local_cli.client import ClientErrorKind, LeetCodeClient
 from leetcode_local_cli.config import (
@@ -64,6 +82,8 @@ from leetcode_local_cli.workspace import (
 from leetcode_local_cli.version import PACKAGE_NAME, get_version
 
 app = Typer(help="力扣中文站本地化刷题 CLI 工具", no_args_is_help=True)
+BROWSER_COOKIE_POLL_INTERVAL_SECONDS = 0.5
+BROWSER_WINDOW_READY_DELAY_SECONDS = 1.0
 
 
 def _configure_utf8_output() -> None:
@@ -165,18 +185,205 @@ def init_workspace(
 
 
 @app.command()
-def login() -> None:
+def login(
+    browser: Annotated[
+        BrowserKind,
+        Option(
+            "--browser",
+            help="登录浏览器：auto 依次尝试 Chrome、Edge；也可明确指定",
+        ),
+    ] = BrowserKind.AUTO,
+    devtools_port: Annotated[
+        int | None,
+        Option(
+            "--devtools-port",
+            min=1,
+            max=65535,
+            help="高级用法：连接已开启的本机浏览器 DevTools 端口",
+        ),
+    ] = None,
+) -> None:
     paths = _require_app_paths()
-    with loading("正在读取浏览器 Cookie..."):
-        browser_result = get_cookies_from_browser()
-    if not browser_result:
-        warning("未从浏览器读取到 Cookie，请手动粘贴")
-        source, cookies = "manual", get_cookies_from_input()
-    else:
-        source, cookies = browser_result
-    if not cookies:
+    if devtools_port is not None:
+        if browser is BrowserKind.AUTO:
+            raise BadParameter(
+                "--devtools-port 必须与 --browser chrome 或 --browser edge 一起使用",
+                param_hint="--devtools-port",
+            )
+        if _try_explicit_devtools_login(
+            browser,
+            devtools_port,
+            session_file=paths.session_file,
+        ):
+            success("成功登录")
+            return
+        _login_manually(paths.session_file)
+        return
+
+    if browser in {BrowserKind.AUTO, BrowserKind.CHROME}:
+        if _try_authorized_browser_login(BrowserKind.CHROME, paths.session_file):
+            success("成功登录")
+            return
+        if browser is BrowserKind.CHROME:
+            _login_manually(paths.session_file)
+            return
+
+    if browser in {BrowserKind.AUTO, BrowserKind.EDGE}:
+        if _try_authorized_browser_login(BrowserKind.EDGE, paths.session_file):
+            success("成功登录")
+            return
+
+    _login_manually(paths.session_file)
+
+
+def _try_authorized_browser_login(
+    browser: BrowserKind,
+    session_file: Path,
+) -> bool:
+    display_name = get_browser_display_name(browser)
+    source = get_browser_session_source(browser)
+    try:
+        try:
+            endpoint = read_browser_devtools_endpoint(browser)
+        except BrowserAuthorizationPending:
+            open_browser_authorization_pages(browser)
+            info(f"已打开 {display_name} 的 Remote debugging 页面和 LeetCode")
+            info(
+                "请勾选 Allow remote debugging for this browser instance；"
+                f"CLI 最多等待 {BROWSER_LOGIN_TIMEOUT_SECONDS:g} 秒"
+            )
+            with loading(f"正在等待 {display_name} 授权和登录状态..."):
+                cookies = _wait_for_browser_cookies(browser)
+        else:
+            info(
+                f"已检测到 {display_name} 调试授权记录；正在检查连接，"
+                "如出现确认请选择允许"
+            )
+            try:
+                with loading(f"正在连接 {display_name} 并读取登录状态..."):
+                    cookies = _read_browser_login_cookies(
+                        browser,
+                        endpoint,
+                        timeout_seconds=BROWSER_LOGIN_TIMEOUT_SECONDS,
+                    )
+            except (DevToolsApprovalRejected, DevToolsConnectionUnavailable) as exc:
+                if isinstance(exc, DevToolsApprovalRejected):
+                    warning(
+                        f"当前 {display_name} 只有后台进程或拒绝了连接，"
+                        "正在打开可见窗口"
+                    )
+                else:
+                    info(
+                        f"{display_name} 当前未运行或授权端点暂不可用，"
+                        "正在自动打开浏览器"
+                    )
+                open_browser_authorization_pages(browser)
+                info("如出现 Allow remote debugging? 确认框，请选择 Allow")
+                sleep(BROWSER_WINDOW_READY_DELAY_SECONDS)
+                with loading(f"正在等待 {display_name} 确认和登录状态..."):
+                    cookies = _wait_for_browser_cookies(browser)
+    except (BrowserError, DevToolsError) as exc:
+        warning(f"{display_name} 自动登录失败：{exc}")
+        return False
+
+    if _validate_and_save_login(
+        cookies,
+        source=source,
+        session_file=session_file,
+    ):
+        return True
+    warning(f"{display_name} 中的 LeetCode 登录状态无效")
+    return False
+
+
+def _try_explicit_devtools_login(
+    browser: BrowserKind,
+    port: int,
+    *,
+    session_file: Path,
+) -> bool:
+    display_name = get_browser_display_name(browser)
+    source = get_browser_session_source(browser)
+    try:
+        with loading(f"正在连接 {display_name} DevTools..."):
+            validate_devtools_browser(port, browser)
+            cookies = get_cookies_from_devtools(port)
+    except (BrowserError, DevToolsError) as exc:
+        warning(f"{display_name} DevTools 登录失败：{exc}")
+        return False
+    if _validate_and_save_login(
+        cookies,
+        source=source,
+        session_file=session_file,
+    ):
+        return True
+    warning(f"{display_name} 中的 LeetCode 登录状态无效")
+    return False
+
+
+def _login_manually(session_file: Path) -> None:
+    warning("无法自动获取 LeetCode 登录状态，请手动粘贴 Cookie")
+    manual_cookies = get_cookies_from_input()
+    if not manual_cookies:
         warning("未获取有效 Cookie")
         raise Exit(1)
+    if not _validate_and_save_login(
+        manual_cookies,
+        source="manual",
+        session_file=session_file,
+    ):
+        warning("Cookie 无效或已过期")
+        raise Exit(1)
+    success("成功登录")
+
+
+def _wait_for_browser_cookies(browser: BrowserKind) -> dict[str, str]:
+    display_name = get_browser_display_name(browser)
+    deadline = monotonic() + BROWSER_LOGIN_TIMEOUT_SECONDS
+    while True:
+        try:
+            endpoint = read_browser_devtools_endpoint(browser)
+        except BrowserAuthorizationPending:
+            endpoint = None
+        if endpoint is not None:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            try:
+                return _read_browser_login_cookies(
+                    browser,
+                    endpoint,
+                    timeout_seconds=remaining,
+                )
+            except (DevToolsApprovalRejected, DevToolsConnectionUnavailable):
+                pass
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            break
+        sleep(min(BROWSER_COOKIE_POLL_INTERVAL_SECONDS, remaining))
+    raise BrowserError(f"等待 {display_name} 授权或 LeetCode 登录状态超时")
+
+
+def _read_browser_login_cookies(
+    browser: BrowserKind,
+    endpoint: BrowserDevToolsEndpoint,
+    *,
+    timeout_seconds: float,
+) -> dict[str, str]:
+    return get_cookies_from_browser_endpoint(
+        endpoint.debugger_url,
+        expected_port=endpoint.port,
+        expected_browser_prefixes=get_browser_identity_prefixes(browser),
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _validate_and_save_login(
+    cookies: dict[str, str],
+    *,
+    source: str,
+    session_file: Path,
+) -> bool:
     with LeetCodeClient(cookies) as client:
         status_result = client.user_status()
         status = status_result.data
@@ -196,15 +403,13 @@ def login() -> None:
                         "username": username,
                         "cookies": cookies,
                     },
-                    paths.session_file,
+                    session_file,
                 )
             except SessionFileError as exc:
                 error(str(exc))
                 raise Exit(1)
-            success("成功登录")
-        else:
-            warning("Cookie 无效或已过期")
-            raise Exit(1)
+            return True
+        return False
 
 
 @app.command()

@@ -1,10 +1,10 @@
 # 项目状态
 
-最近更新：2026-07-31
+最近更新：2026-08-01
 
-当前开发状态：`v0.8.0` 之后的未发布修复
+当前开发状态：`v0.9.0` 发布
 
-当前发布状态：`v0.8.0` 已发布到 PyPI 和 GitHub Releases。
+当前发布状态：`v0.9.0` 通过版本标签发布到 PyPI 和 GitHub Releases。
 
 本文是项目长期开发上下文的状态入口，只记录源码、测试和当前文档已经确认的事实。用户可见行为以 [README](../README.md) 和 [产品边界](PRODUCT_BOUNDARIES.md) 为准；安全问题以 [安全审计](SECURITY_REVIEW.md) 为准。
 
@@ -37,6 +37,16 @@
 - 不迁移或删除旧 `.aether_lc/session.json`；当前无人使用旧版本，用户需要重新登录。
 - `.leetcode_local_cli/` 继续由仓库 `.gitignore` 排除，诊断和错误输出不得包含 Cookie 值。
 
+### v0.9：Chrome 与 Edge 浏览器授权登录
+
+- 普通 `lc login` 按当前日常 Chrome、当前日常 Edge、手动 Cookie 的顺序尝试；`--browser chrome|edge` 可以固定浏览器且不会偷偷切换另一浏览器。
+- Chrome 和 Edge 分别通过默认用户目录中的 `DevToolsActivePort` 连接用户在 `chrome://inspect/#remote-debugging` 或 `edge://inspect/#remote-debugging` 勾选 **Allow remote debugging for this browser instance** 后明确授权的当前实例；approval-only 模式直接使用浏览器 WebSocket，不依赖可能返回 404 的 `/json/version`。
+- 浏览器未运行但遗留授权文件、正在启动或只有后台进程导致 403 时，CLI 打开一次可见窗口，并在 180 秒总时限内重读端点、重试临时连接错误，以便用户在 **Allow remote debugging?** 中选择 **Allow**；身份和协议错误不会被伪装成启动竞态。CLI 不创建专用浏览器配置、不读取 Cookie 数据库，也不关闭日常浏览器。
+- `--devtools-port` 可连接指定浏览器的已有本机端口，且必须与明确的 `--browser` 组合；无人使用的旧实验参数 `--chrome-debug-port` 已删除。
+- HTTP 发现和 WebSocket 端点必须同时属于同一个回环端口，禁用代理和重定向，不扫描端口、不读取或解密浏览器 Cookie 数据库。
+- CLI 通过页面端点调用 `Network.getCookies`，请求范围限定为 `https://leetcode.cn/`，只保留 `LEETCODE_SESSION` 和 `csrftoken`；Cookie 值不会进入终端或异常。
+- 获取后仍通过 LeetCode 在线验证登录态，只有已登录并返回有效用户名时才原子保存 Session，来源记录为 `Chrome DevTools` 或 `Edge DevTools`。
+
 ### 既有用户工作流
 
 - `lc login`、`status`、`profile`、`show`、`get`、`solve`、`test`、`doctor` 和 `submit` 的核心能力保持。
@@ -44,7 +54,7 @@
 - `lc doctor` 默认不执行用户代码；只有 `--run-solution` 才执行。
 - `lc solve` 仍表示切换当前题目，因此可以无确认覆盖普通 `solution.py`。
 
-### 未发布：`lc test` 交互执行与可靠性修复
+### v0.9：`lc test` 交互执行与可靠性修复
 
 - `lc test` 在独立持久 worker 中加载 `solution.py`，按定义顺序发现 `Solution` 的第一个公开实例方法；不需要、也不会调用 `run_cases()`。
 - 交互模式输入 `name = value` 参数并展示实际返回值；只允许安全 Python 字面量。每一组使用新的 `Solution` 实例，输入错误、异常或超时会显示受控错误但不终止下一组输入。
@@ -53,14 +63,14 @@
 - 退出码 0 只表示所有已输入调用正常结束，不把“未写断言”伪装为算法正确性。`lc submit` 不调用本地执行，继续只提交 marker 区域。
 - `lc solve` 对空函数签名和 LeetCode 内联 `: pass` 模板生成显式 `raise NotImplementedError("请实现题目方法")`；它同时消除 Pyright 的缺少返回值提示，并阻止空模板以 `None` 作为一次成功调用结束。
 
-### 未发布：`solution.py` 编码错误边界
+### v0.9：`solution.py` 编码错误边界
 
 - 通过共享读取边界只接受 UTF-8，并兼容 Windows 编辑器常见的 UTF-8 BOM。
 - 非 UTF-8 文件获得独立 `INVALID_ENCODING` 状态，不再被误报为权限错误或暴露 `UnicodeDecodeError` traceback。
 - `lc test` 在 runner 启动前失败，`lc doctor --run-solution` 不执行文件，`lc submit` 在创建远端客户端前失败。
 - 不猜测 GBK 等本地编码，不用替换字符继续解析，也不自动转换或覆盖用户文件。
 
-### 未发布：远程提交退出码
+### v0.9：远程提交退出码
 
 - `lc submit` 只有明确获得 `Accepted` 时返回退出码 0。
 - Wrong Answer、Time Limit Exceeded、其他非 Accepted、缺少可识别状态和轮询超时返回退出码 1。
@@ -69,7 +79,7 @@
 
 ## 当前开发阶段
 
-v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实现、发布并完成 Windows 与 Linux/WSL 双平台验收。当前源码完成了 `lc test` 假通过、无限等待、非 UTF-8 traceback 和提交假成功的修复，并把本地测试改为显式的交互执行；提交轮询仍需迁移到稳定总超时模型，之后再进入 v0.9 的领域模型、异常边界和 Python API 预览。
+v0.8 的运行上下文、配置、工作区初始化和安装器集成已经完成。v0.9 完整实现日常 Chrome/Edge 显式授权自动登录，并发布 `lc test` 假通过、无限等待、非 UTF-8 traceback 和提交假成功修复。提交轮询仍需迁移到稳定总超时模型，领域模型、异常边界和 Python API 预览顺延到后续架构阶段。
 
 2026-07-30 验收结果：
 
@@ -78,14 +88,18 @@ v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实
 - Ubuntu 26.04 WSL2：隔离源码、构建、安装器、默认工作区复用、符号链接边界和在线只读流程通过；`pytest` 为 210 passed、1 skipped。通过数差异来自 Windows 专属 junction 用例与 Linux 可执行符号链接用例的跳过条件不同，总收集数一致。
 - `v0.8.0` 标签发布工作流在 Ubuntu、macOS 和 Windows 全部通过，随后成功发布 PyPI 和 GitHub Release。
 
-2026-07-31 当前源码验证：
+2026-08-01 v0.9.0 发布验证：
 
 - Ruff format、Ruff lint 和 Pyright 全部通过。
-- Windows 完整 pytest 为 239 passed、13 skipped。
+- Windows 完整 pytest 为 288 passed、13 skipped。
 - wheel 与源码包构建通过，构建产物包含内部 `_test_runner.py`、`local_testing.py` 和共享 `solution_source.py`；`lc --version` 和 `lc test --help` 入口通过。
 - 定向测试确认入口发现、安全字面量、逐组新实例、返回值/原地修改回显、异常、超时重启、交互退出、JSON Lines stdin 和提交隔离符合 `PB-C12`。
 - 定向测试确认非法编码在 test、Doctor、runner 和 submit 中受控失败，UTF-8 BOM 正常读取，符合 `PB-C13`。
 - 定向测试确认 Accepted 返回 0，Wrong Answer、Time Limit Exceeded、缺少状态和轮询超时返回 1，符合 `PB-C14`。
+- 定向测试确认默认 Chrome → Edge → 手动 Cookie 回退、显式浏览器隔离、Chrome/Edge 授权等待、浏览器身份校验和非所有权边界符合 `PB-C15`。
+- Windows Chrome `150.0.7871.187` 已完成一次真实 `lc login --browser chrome` 验收：用户在日常 Chrome 明确开启当前实例调试后，CLI 成功获取所需登录态、在线验证并保存 Session，且没有创建或关闭专用 Chrome。Cookie 值未进入终端或测试报告。
+- Windows Edge `150.0.4078.105` 已完成一次真实 `lc login --browser edge` 验收：后台实例 403 后自动打开可见窗口，用户明确允许连接，CLI 成功获取所需登录态、在线验证并保存 Session；Cookie 值未进入终端或测试报告。
+- Chrome 关闭但遗留 `DevToolsActivePort` 时的自动拉起与启动竞态恢复已通过自动化测试；为避免擅自关闭维护者的日常浏览器，真实关闭后拉起流程仍待手动验收。
 
 ## 未完成任务
 
@@ -117,4 +131,4 @@ v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实
 1. 把固定 10 次提交轮询改为基于单调时钟的稳定总超时。
 2. 确认 Git 工作区标记的版本控制与忽略策略，避免 `lc init` 长期制造不明确的工作树状态。
 3. 决定 `PB-002` 的 verbose/Doctor 输出范围，并为普通 push 和 Pull Request 增加日常 CI。
-4. 完成上述可靠性门禁后进入 v0.9 核心模型与异常边界迁移。
+4. 完成上述可靠性门禁后进入核心模型、异常边界与 Python API 预览迁移。

@@ -1,7 +1,9 @@
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -192,6 +194,428 @@ def test_doctor_command_exits_nonzero_for_failed_report(monkeypatch) -> None:
     result = runner.invoke(cli.app, ["doctor"])
 
     assert result.exit_code == 1
+
+
+def test_login_uses_explicit_chrome_devtools_port_without_manual_fallback(
+    configured_app_paths,
+    monkeypatch,
+) -> None:
+    cookies = {"LEETCODE_SESSION": "session-value", "csrftoken": "csrf-value"}
+    saved_sessions = []
+
+    class SignedInClient:
+        def __init__(self, received_cookies):
+            assert received_cookies == cookies
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def user_status(self):
+            return SimpleNamespace(
+                ok=True, data={"isSignedIn": True, "username": "learner"}
+            )
+
+    validated = []
+    monkeypatch.setattr(
+        cli,
+        "validate_devtools_browser",
+        lambda port, browser: validated.append((port, browser)),
+    )
+    monkeypatch.setattr(cli, "get_cookies_from_devtools", lambda port: cookies)
+    monkeypatch.setattr(
+        cli,
+        "get_cookies_from_input",
+        lambda: pytest.fail("manual Cookie input must not run"),
+    )
+    monkeypatch.setattr(cli, "LeetCodeClient", SignedInClient)
+    monkeypatch.setattr(
+        cli,
+        "save_session",
+        lambda session, path: saved_sessions.append((session, path)),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["login", "--browser", "chrome", "--devtools-port", "9222"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert validated == [(9222, cli.BrowserKind.CHROME)]
+    assert saved_sessions == [
+        (
+            {
+                "site": "leetcode.cn",
+                "source": "Chrome DevTools",
+                "username": "learner",
+                "cookies": cookies,
+            },
+            configured_app_paths.session_file,
+        )
+    ]
+
+
+def test_login_auto_stops_after_chrome_success(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_try_authorized_browser_login",
+        lambda browser, session_file: calls.append(browser) or True,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_login_manually",
+        lambda session_file: pytest.fail("manual login must not run"),
+    )
+
+    result = runner.invoke(cli.app, ["login"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [cli.BrowserKind.CHROME]
+
+
+def test_login_auto_falls_back_from_chrome_to_edge(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_try_authorized_browser_login",
+        lambda browser, session_file: (
+            calls.append(browser) or browser is cli.BrowserKind.EDGE
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_login_manually",
+        lambda session_file: pytest.fail("manual login must not run"),
+    )
+
+    result = runner.invoke(cli.app, ["login"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [cli.BrowserKind.CHROME, cli.BrowserKind.EDGE]
+
+
+@pytest.mark.parametrize(
+    ("browser_name", "expected_call"),
+    [("chrome", "chrome"), ("edge", "edge")],
+)
+def test_login_explicit_browser_does_not_try_the_other_browser(
+    browser_name,
+    expected_call,
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_try_authorized_browser_login",
+        lambda browser, session_file: calls.append(browser.value) or True,
+    )
+
+    result = runner.invoke(cli.app, ["login", "--browser", browser_name])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [expected_call]
+
+
+def test_login_auto_falls_back_to_manual_after_both_browsers_fail(
+    monkeypatch,
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_try_authorized_browser_login",
+        lambda browser, path: False,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_login_manually",
+        lambda session_file: calls.append("manual"),
+    )
+
+    result = runner.invoke(cli.app, ["login"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == ["manual"]
+
+
+def test_login_devtools_port_requires_explicit_browser(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_try_explicit_devtools_login",
+        lambda *args, **kwargs: pytest.fail("ambiguous endpoint must not be used"),
+    )
+
+    result = runner.invoke(cli.app, ["login", "--devtools-port", "9222"])
+
+    assert result.exit_code == 2
+    assert "--browser chrome" in result.output
+
+
+def test_login_rejects_removed_chrome_debug_port_alias(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_try_explicit_devtools_login",
+        lambda *args, **kwargs: pytest.fail("removed option must not be accepted"),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["login", "--browser", "chrome", "--chrome-debug-port", "9222"],
+    )
+
+    assert result.exit_code == 2
+    assert "No such option" in result.output
+
+
+@pytest.mark.parametrize(
+    ("browser", "prefixes", "source"),
+    [
+        (cli.BrowserKind.CHROME, ("Chrome/",), "Chrome DevTools"),
+        (cli.BrowserKind.EDGE, ("Edg/",), "Edge DevTools"),
+    ],
+)
+def test_authorized_browser_login_uses_existing_authorization_without_opening_pages(
+    browser,
+    prefixes,
+    source,
+    monkeypatch,
+) -> None:
+    cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
+    events = []
+    endpoint = cli.BrowserDevToolsEndpoint(
+        port=53127,
+        debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
+    )
+    monkeypatch.setattr(
+        cli,
+        "read_browser_devtools_endpoint",
+        lambda received_browser: endpoint,
+    )
+    monkeypatch.setattr(
+        cli,
+        "get_cookies_from_browser_endpoint",
+        lambda url, **kwargs: events.append(("connect", url, kwargs)) or cookies,
+    )
+    monkeypatch.setattr(
+        cli,
+        "open_browser_authorization_pages",
+        lambda received_browser: pytest.fail(
+            "authorized browser must not open another page"
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_validate_and_save_login",
+        lambda received, **kwargs: (
+            events.append(("save", received, kwargs["source"])) or True
+        ),
+    )
+
+    assert cli._try_authorized_browser_login(browser, Path("session.json")) is True
+    assert events == [
+        (
+            "connect",
+            endpoint.debugger_url,
+            {
+                "expected_port": endpoint.port,
+                "expected_browser_prefixes": prefixes,
+                "timeout_seconds": cli.BROWSER_LOGIN_TIMEOUT_SECONDS,
+            },
+        ),
+        ("save", cookies, source),
+    ]
+
+
+@pytest.mark.parametrize("browser", [cli.BrowserKind.CHROME, cli.BrowserKind.EDGE])
+def test_authorized_browser_login_opens_pages_when_permission_is_missing(
+    browser,
+    monkeypatch,
+) -> None:
+    cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
+    events = []
+    monkeypatch.setattr(
+        cli,
+        "read_browser_devtools_endpoint",
+        lambda received_browser: (_ for _ in ()).throw(
+            cli.BrowserAuthorizationPending("browser 尚未授权")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "open_browser_authorization_pages",
+        lambda received_browser: events.append(("open", received_browser)),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_wait_for_browser_cookies",
+        lambda received_browser: cookies,
+    )
+    monkeypatch.setattr(cli, "_validate_and_save_login", lambda *args, **kwargs: True)
+
+    assert cli._try_authorized_browser_login(browser, Path("session.json")) is True
+    assert events == [("open", browser)]
+
+
+def test_authorized_browser_login_does_not_reopen_for_generic_endpoint_failure(
+    monkeypatch,
+) -> None:
+    endpoint = cli.BrowserDevToolsEndpoint(
+        port=53127,
+        debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
+    )
+    monkeypatch.setattr(
+        cli,
+        "read_browser_devtools_endpoint",
+        lambda browser: endpoint,
+    )
+    monkeypatch.setattr(
+        cli,
+        "open_browser_authorization_pages",
+        lambda browser: pytest.fail("generic failures must not open more pages"),
+    )
+    monkeypatch.setattr(
+        cli,
+        "get_cookies_from_browser_endpoint",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            cli.DevToolsError("stale endpoint")
+        ),
+    )
+
+    assert (
+        cli._try_authorized_browser_login(
+            cli.BrowserKind.CHROME,
+            Path("session.json"),
+        )
+        is False
+    )
+
+
+def test_chrome_login_starts_browser_when_saved_endpoint_is_unreachable(
+    monkeypatch,
+) -> None:
+    cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
+    events = []
+    endpoint = cli.BrowserDevToolsEndpoint(
+        port=53127,
+        debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
+    )
+    monkeypatch.setattr(
+        cli,
+        "read_browser_devtools_endpoint",
+        lambda browser: endpoint,
+    )
+    monkeypatch.setattr(
+        cli,
+        "get_cookies_from_browser_endpoint",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            cli.DevToolsConnectionUnavailable("browser is not running")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "open_browser_authorization_pages",
+        lambda browser: events.append(("open", browser)),
+    )
+    monkeypatch.setattr(
+        cli,
+        "sleep",
+        lambda seconds: events.append(("sleep", seconds)),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_wait_for_browser_cookies",
+        lambda browser: events.append(("wait", browser)) or cookies,
+    )
+    monkeypatch.setattr(cli, "_validate_and_save_login", lambda *args, **kwargs: True)
+
+    assert (
+        cli._try_authorized_browser_login(
+            cli.BrowserKind.CHROME,
+            Path("session.json"),
+        )
+        is True
+    )
+    assert events == [
+        ("open", cli.BrowserKind.CHROME),
+        ("sleep", cli.BROWSER_WINDOW_READY_DELAY_SECONDS),
+        ("wait", cli.BrowserKind.CHROME),
+    ]
+
+
+def test_wait_for_browser_cookies_retries_while_browser_starts(monkeypatch) -> None:
+    cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
+    endpoint = cli.BrowserDevToolsEndpoint(
+        port=53127,
+        debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
+    )
+    attempts = []
+
+    def read_cookies(browser, received_endpoint, *, timeout_seconds):
+        attempts.append((browser, received_endpoint, timeout_seconds))
+        if len(attempts) == 1:
+            raise cli.DevToolsConnectionUnavailable("browser is starting")
+        return cookies
+
+    monkeypatch.setattr(
+        cli,
+        "read_browser_devtools_endpoint",
+        lambda browser: endpoint,
+    )
+    monkeypatch.setattr(cli, "_read_browser_login_cookies", read_cookies)
+    monkeypatch.setattr(cli, "sleep", lambda seconds: None)
+
+    assert cli._wait_for_browser_cookies(cli.BrowserKind.CHROME) == cookies
+    assert len(attempts) == 2
+
+
+@pytest.mark.parametrize("browser", [cli.BrowserKind.CHROME, cli.BrowserKind.EDGE])
+def test_authorized_browser_login_opens_visible_window_and_retries_after_rejection(
+    browser,
+    monkeypatch,
+) -> None:
+    cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
+    events = []
+    endpoint = cli.BrowserDevToolsEndpoint(
+        port=53127,
+        debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
+    )
+    monkeypatch.setattr(
+        cli,
+        "read_browser_devtools_endpoint",
+        lambda received_browser: endpoint,
+    )
+    monkeypatch.setattr(
+        cli,
+        "get_cookies_from_browser_endpoint",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            cli.DevToolsApprovalRejected("approval rejected")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "open_browser_authorization_pages",
+        lambda received_browser: events.append(("open", received_browser)),
+    )
+    monkeypatch.setattr(
+        cli,
+        "sleep",
+        lambda seconds: events.append(("sleep", seconds)),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_wait_for_browser_cookies",
+        lambda received_browser: events.append(("retry", received_browser)) or cookies,
+    )
+    monkeypatch.setattr(cli, "_validate_and_save_login", lambda *args, **kwargs: True)
+
+    assert cli._try_authorized_browser_login(browser, Path("session.json")) is True
+    assert events == [
+        ("open", browser),
+        ("sleep", cli.BROWSER_WINDOW_READY_DELAY_SECONDS),
+        ("retry", browser),
+    ]
 
 
 def test_solve_command_reports_rejected_workspace_target(monkeypatch) -> None:
