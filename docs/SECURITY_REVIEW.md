@@ -1,148 +1,63 @@
-# 安全审计与修复清单
-
-初次审计日期：2026-07-20
+# 安全与可靠性边界
 
 最近更新：2026-08-01
 
-审计范围：`src/`、安装脚本、发布工作流、运行时依赖，以及 v0.8 路径、配置、工作区与 Session 变更。
-
-## 总体结论
-
-v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和固定 Session 临时文件三项高风险实现。用户配置、工作区标记、解题文件和 Session 都通过显式 `AppPaths` 定位；写入目标拒绝符号链接、断链、目录、junction 和 Windows reparse point；覆盖使用随机同目录临时文件和原子替换。
-
-当前最高剩余风险是维护者明确选择的明文 Session JSON。它服务于 AI 使用真实账号执行授权端到端测试，但不等同于安全秘密存储，不能进入 Git、同步盘、共享目录、日志或报告。
+范围：凭据、工作区写入、用户代码、浏览器连接、网络和发布。
 
 ## 当前风险
 
-| ID | 等级 | 问题 | 主要影响 | 状态 |
-| --- | --- | --- | --- | --- |
-| SR-002 | 高 | Cookie 明文保存在默认工作区 | Session 泄漏、误提交或同步 | 阶段性接受，长期待替换 |
-| SR-003 | 中 | 系统关联自动打开 `.py` | Windows 上可能使用非编辑器关联 | 已接受，后续配置 |
+| 等级 | 风险 | 当前控制 | 后续方向 |
+| --- | --- | --- | --- |
+| 高 | Session Cookie 明文保存在工作区 | 目录被 `.gitignore` 排除；原子写入；禁止输出、提交和 CI 使用真实值 | 重新设计系统秘密存储和迁移 |
+| 中 | DevTools 授权期间端点可控制日常浏览器 | 用户两步授权；仅回环；浏览器身份、端口和站点范围校验；不关闭用户实例 | 继续缩短权限窗口并完善手动验收 |
+| 中 | `lc test`/`doctor --run-solution` 执行用户代码 | 必须显式触发；独立进程、每组超时、无 Shell | 不能宣称沙箱；只在可信工作区运行 |
+| 中 | 提交固定轮询次数 | 单次网络请求有超时；未知结果返回非零 | 改为稳定总超时和有限安全重试 |
+| 低 | 系统默认程序打开 `.py` | 使用参数化系统调用，不使用 Shell | 引入明确编辑器配置 |
+| 低 | 工作区标记使 Git 工作树变脏 | 不静默改 `.gitignore` | 先确认产品语义 |
 
-## 已修复风险
+## 已实施控制
 
-### 显式路径与默认工作区
+### 文件与路径
 
-- `auth.py` 和 `workspace.py` 不再定义导入时 `Path.cwd()`、`PROJECT_ROOT`、固定 `SOLUTION_FILE` 或固定 `SESSION_FILE`。
-- 普通命令先读取系统用户配置，再验证版本化工作区标记，最后把明确路径传入核心模块。
-- `--help` 和 `--version` 不读取配置；未初始化的业务命令清晰提示 `lc init`。
-- 损坏、未知版本和结构异常的 TOML 不会被静默覆盖。
+- 所有业务路径来自显式 `AppPaths`，不在导入时依赖当前目录。
+- 配置、`solution.py` 和 Session 只接受不存在或普通目标；拒绝链接、断链、目录、junction 和 reparse point。
+- 覆盖使用同目录随机排他临时文件、完整写入、`fsync` 和 `os.replace`；失败保留旧文件。
+- 初始化只回滚本次创建内容，不删除已有用户文件。
+- `solution.py` 只按 UTF-8/UTF-8 BOM 读取；非法编码在执行和网络请求前受控失败。
 
-### `solution.py` 写入事务
+### 凭据与浏览器
 
-- 只允许不存在或普通文件目标。
-- 同目录使用不可预测的排他临时文件，完整写入、flush、fsync 后再次验证目标。
-- 使用 `os.replace` 替换目录项，不跟随目标符号链接。
-- 写入、权限或占用失败时临时文件被清理，旧 `solution.py` 保持不变。
-- `lc init` 与 `lc solve` 的语义分离：初始化保留已有普通解法，切题命令允许原子覆盖。
+- 普通登录优先使用用户明确授权的日常 Chrome/Edge，失败后才隐藏输入手动 Cookie。
+- 不读取或解密浏览器 Cookie 数据库；不扫描端口；不创建或关闭浏览器配置。
+- DevTools 必须是身份匹配的本机回环端点；只请求 `https://leetcode.cn/`，只保留 `LEETCODE_SESSION` 和 `csrftoken`。
+- 获取 Cookie 后仍需在线验证，成功才写入 Session。
+- Cookie 值不得进入终端、异常、测试 fixture、报告、Issue、Git 或构建产物。
 
-### Session 写入事务
+### 执行、网络与终端
 
-- 删除固定 `session.json.tmp` 路径。
-- Session 目录和文件目标都拒绝链接、目录和 reparse point。
-- POSIX 上目录使用 `0700`、文件使用 `0600`。
-- JSON 序列化在写入前完成，失败不会产生 Session 文件。
-- Doctor、异常和测试结果只包含安全元数据或缺失 Cookie 名称。
+- 子进程使用参数数组，不使用 `shell=True`。
+- `lc test` 的参数只用受限 AST 和 `ast.literal_eval` 解析；用户输入不会作为表达式执行。
+- `lc doctor` 默认只做静态检查；`lc submit` 不执行本地代码。
+- HTTP 使用 HTTPS 和明确超时；GraphQL 使用变量；外部文本去除控制字符并作为纯文本渲染。
+- 提交只有明确 `Accepted` 返回 0，避免红色失败信息同时向自动化报告成功。
 
-### Chrome 与 Edge DevTools 授权登录
+### 仓库与发布
 
-- 普通 `lc login` 依次尝试用户在 `chrome://inspect/#remote-debugging`、`edge://inspect/#remote-debugging` 明确勾选允许调试的当前日常 Chrome 和 Edge；指定 `--browser` 后不访问另一浏览器。
-- 两种浏览器都只读取官方默认用户目录中受普通文件检查保护的 `DevToolsActivePort`，限制文件大小并验证端口、控制路径、回环端点，以及通过 `Browser.getVersion` 返回的 `Chrome/` 或 `Edg/` 身份；不读取或解密 Cookie 数据库。
-- approval-only 连接必须由用户先开启实例调试，再在连接确认框中允许；浏览器未运行、遗留端点暂时不可达或 403 时只打开一次可见窗口，并在 180 秒总预算内重读端点和有限重试连接，不循环打开窗口。浏览器身份、协议等确定性错误不重试。CLI 不创建专用配置，不持有也不关闭日常 Chrome 或 Edge。
-- `--devtools-port` 必须和明确的 Chrome 或 Edge 选择组合，防止把未知本机服务当成目标浏览器；无人使用的旧实验参数 `--chrome-debug-port` 已删除，避免继续暴露过时的 Chrome 专用语义。
-- HTTP 发现固定使用 `127.0.0.1`、禁用环境代理与重定向；返回的 WebSocket 必须是相同端口的 `ws://127.0.0.1` 或 `ws://[::1]`，不得包含凭据。
-- 使用页面级 `Network.getCookies` 并把 URL 限定为 `https://leetcode.cn/`，不调用返回全浏览器 Cookie 的 `Storage.getCookies` 或已弃用 `Network.getAllCookies`。
-- 响应只提取域名边界匹配的 `LEETCODE_SESSION` 与 `csrftoken`；协议错误、缺字段、超时和非本机端点均受控失败，Cookie 值不进入输出。
-- DevTools 端点具有完整浏览器控制能力。Chrome 和 Edge 都是用户主动授权的日常实例，CLI 无权替用户关闭，因此用户应在完成后撤销 Remote debugging 或关闭浏览器。两种路径都不能消除同一台机器上其他进程在授权窗口期访问端点的固有风险。
+- `.leetcode_local_cli/`、旧 Session 目录、常见密钥 JSON、环境文件和个人编辑器目录被忽略。
+- 测试扫描已跟踪 JSON 的高风险秘密字段；CI 只使用假 Cookie 和 MockTransport。
+- GitHub Actions 第三方 Action 固定 SHA；PyPI 使用 OIDC Trusted Publisher，不保存上传 Token。
 
-### 初始化与安装器
+## 明文 Session 规则
 
-- `lc init` 先验证已有用户配置、工作区配置和文件目标，再执行创建。
-- 初始化失败只回滚本次创建的文件，不删除预先存在的用户内容。
-- `--yes` 只能与显式完整路径组合，不能绕过安全校验。
-- 官方安装器使用 uv 工具 bin 目录中的绝对 `lc`，不依赖终端 PATH 刷新。
-- POSIX 管道安装通过 `/dev/tty` 交互；非交互、CI 或显式 `LEETCODE_LOCAL_CLI_NO_INIT=1` 不等待输入。
-- 初始化失败不会卸载已经成功安装的工具，但安装脚本返回失败并给出恢复命令。
+当前文件为 `<workspace>/.leetcode_local_cli/session.json`。这是为维护者授权的真实账号验收保留的阶段性能力，不是安全秘密存储。
 
-### `lc test` 假通过与无限等待
+- 不放入同步盘或共享工作区，不提交、不粘贴、不记录。
+- AI 或脚本只有在维护者明确授权的具体测试中才能使用。
+- CI 不执行真实登录或提交；建议真实验收使用专门账号。
+- 初始化、升级和卸载不主动删除 Session；用户负责其生命周期。
 
-- `lc test` 必须发现 `Solution` 的公开实例方法；没有可执行入口或没有任何输入都返回非零，不再把空脚本或 `run_cases()` 的空实现显示为通过。
-- 用户输入只经受限 AST 与 `ast.literal_eval` 解析为 `name = value` 字面量，不执行输入中的表达式、函数、变量或 `**kwargs`。
-- worker 每一组建立新的 `Solution` 实例，异常被转为受控失败；每组默认 1 秒，超时会终止 worker，下一组才重新启动。
-- worker 调用使用参数数组且不启用 Shell；交互输出经过终端控制字符过滤，`--stdin` 以 JSON 字符串转义输出，不展示 Python traceback。
-- 该控制不是沙箱。加载和调用用户代码仍拥有当前账号权限，也可能创建自己的子进程或持久化副作用，只能在可信工作区中运行。
+## 验证边界
 
-### `solution.py` 非 UTF-8 traceback
+发布前运行 Ruff、Pyright、完整 pytest、wheel/sdist 构建和入口 smoke test。三平台安装与包行为由发布工作流验证；真实浏览器、Cookie 和提交只能做明确授权且脱敏的手动验收。
 
-- `solution_source.py` 统一按 UTF-8/UTF-8 BOM 读取用户代码，并把解码失败转换为不含原始字节的专用错误。
-- `test` 在启动 runner 前失败；`doctor --run-solution` 不执行无效编码文件；`submit` 在加载 Session 和创建远端客户端前失败。
-- 不使用替换字符继续编译或提交，不自动猜测 GBK 等编码，也不改写用户文件。
-- CLI 和 Doctor 只展示受控中文提示，不输出 `UnicodeDecodeError` traceback。
-
-### 远程提交假成功退出码
-
-- `lc submit` 先展示判题结果，再由 CLI 独立映射机器退出码。
-- 只有明确的 `status_msg == "Accepted"` 返回 0；非 Accepted、缺少状态和轮询超时返回 1。
-- 网络、认证、编码和响应结构错误继续返回 1，参数使用错误返回 2。
-- 自动化不再把红色失败提示或超时提示误判为成功。
-
-## 明文 Session 的阶段性控制
-
-目录结构：
-
-```text
-<workspace>/.leetcode_local_cli/session.json
-```
-
-必须遵守：
-
-- `.leetcode_local_cli/` 必须保持在仓库 `.gitignore` 中。
-- 不得把 Session 内容打印、粘贴到报告、提交到 Git 或上传到 Issue。
-- AI 真实验收只能在维护者明确授权时读取并使用该文件。
-- CI 使用假 Cookie 和 MockTransport，不执行真实远程提交。
-- 推荐使用专门测试账号；主账号提交记录和站点风控不属于自动化可恢复资源。
-- `lc init`、升级和卸载都不删除或覆盖 Session；用户负责其生命周期。
-
-未来系统秘密存储实施时，需要重新设计 Windows Credential Manager、macOS Keychain、Linux Secret Service、无后端降级和明文 Session 迁移。v0.8 不承诺自动迁移旧文件。
-
-## 其他剩余可靠性风险
-
-| ID | 等级 | 问题 |
-| --- | --- | --- |
-| RT-008 | 中 | 提交轮询仍按固定 10 次执行，不是稳定、可配置的总超时 |
-| RT-005 | 低 | Broken Pipe 可能产生假失败 |
-| RT-006 | 低 | 极大分页偏移的错误归因不够准确 |
-| RT-007 | 低 | Git 仓库作为工作区时，未自动忽略的 `.leetcode-local-cli.toml` 会使工作树变脏 |
-
-## v0.8.0 双平台验收证据
-
-2026-07-30 的脱敏验收补充了以下真实证据：
-
-- Windows 11 完成隐藏手动 Cookie 登录、Session 跨命令复用、在线只读流程、Doctor、本地执行和一次维护者授权的 Accepted 提交。
-- Ubuntu 26.04 WSL2 完成隔离构建、安装器、XDG 配置、POSIX Session 权限、符号链接/断链拒绝和在线只读流程；为避免重复远端副作用，没有再次真实提交。
-- 两个平台都没有在报告、构建产物或 Git 跟踪内容中发现 Cookie；Windows Session 在在线命令前后保持不变。
-- 发布标签的 Ubuntu、macOS、Windows 自动化门禁、wheel/sdist smoke test、PyPI Trusted Publishing 和 GitHub Release 均成功。
-
-这些结果证明已执行范围内的控制有效，但不替代独立物理 Linux、真实 macOS、不同浏览器密钥后端或长期秘密存储验证。
-
-## 已有安全措施
-
-- LeetCode 客户端基础地址固定为 HTTPS。
-- 子进程使用参数列表，不使用 `shell=True`。
-- GraphQL 使用变量传值，不拼接用户输入。
-- 手动 Cookie 输入不回显。
-- 外部文本经过控制字符过滤并作为纯文本交给 Rich。
-- `.leetcode_local_cli/`、`.aether_lc/`、常见凭据 JSON、环境文件和个人编辑器目录已忽略。
-- 仓库测试扫描已跟踪 JSON 的高风险秘密字段，不输出字段值。
-- GitHub Actions 的第三方 Action 固定到提交 SHA。
-- PyPI 发布使用 OIDC Trusted Publisher，不保存 PyPI Token。
-
-## 发布前验证要求
-
-- Ruff format、Ruff lint、Pyright 和完整 pytest。
-- wheel 和源码包构建与入口 smoke test。
-- Windows、macOS、Linux 安装器非交互路径自动测试。
-- 三平台真实交互初始化需要手动验收。
-- 真实 Cookie 和远程提交只在明确授权环境验证，报告必须脱敏。
-
-2026-08-01 的 v0.9 Chrome/Edge DevTools 登录、`lc test` 交互执行、模板占位、编码边界与提交退出码修复已在 Windows 通过 Ruff、Pyright、288 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；日常 Chrome/Edge approval-only 共享逻辑、浏览器关闭后的遗留端点恢复和启动竞态重试通过自动化测试，Chrome `150.0.7871.187` 与 Edge `150.0.4078.105` 均完成一次用户明确允许的真实登录验收，Cookie 值未进入终端或报告。未执行维护者的真实 solution.py 或远程提交。
+`v0.9.0` 已在 Windows 对 Chrome 与 Edge 各完成一次真实授权登录；自动化覆盖授权文件、回环/身份校验、启动竞态、错误回退、非法编码、worker 超时和提交退出码。它不证明用户代码已被安全沙箱化，也不消除明文 Session 风险。

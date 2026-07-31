@@ -2,133 +2,50 @@
 
 最近更新：2026-08-01
 
-当前开发状态：`v0.9.0` 发布
+当前版本：`v0.9.0`，已发布到 PyPI 和 GitHub Releases。
 
-当前发布状态：`v0.9.0` 通过版本标签发布到 PyPI 和 GitHub Releases。
+这是维护者的第一事实入口。用户行为以 [README](../README.md) 和 [PRODUCT_BOUNDARIES](PRODUCT_BOUNDARIES.md) 为准；实现结构以 [ARCHITECTURE](ARCHITECTURE.md) 为准。
 
-本文是项目长期开发上下文的状态入口，只记录源码、测试和当前文档已经确认的事实。用户可见行为以 [README](../README.md) 和 [产品边界](PRODUCT_BOUNDARIES.md) 为准；安全问题以 [安全审计](SECURITY_REVIEW.md) 为准。
+## 当前目标
 
-## 当前项目目标
+`leetcode-local-cli` 是面向 LeetCode 中文站的轻量、本地刷题 CLI。当前目标是可靠完成：配置工作区、登录、查询题目、生成单文件解法、本地调用、诊断和远程提交。
 
-`leetcode-local-cli` 是面向 LeetCode 中文站的轻量、在线优先、本地刷题 CLI。当前版本通过一个显式配置的默认工作区维护单个 `solution.py`，支持登录、题目查询、本地测试、诊断和远程提交，不引入本地数据库、完整题库或每题独立目录。
+当前明确不做数据库、完整本地题库、每题目录、Web/桌面 UI、AI 功能和 Python3 以外的提交语言。
 
-长期目标仍是形成共享核心实现的稳定 CLI 与 Python API，并支持中文站和国际站。长期设计中的双站点、系统秘密存储、图片和 UI 改造尚未实现。
+## 已实现
 
-## 已完成功能
+- 安装与工作区：uv 安装；跨平台用户配置；`lc init [path]`；单个默认工作区和 `solution.py`。
+- 安全写入：普通文件可原子覆盖；符号链接、断链、目录、junction 和 reparse point 被拒绝。
+- 登录：日常 Chrome → 日常 Edge → 手动 Cookie；浏览器路径需要用户明确允许 DevTools，只读取 `leetcode.cn` 所需 Cookie 并在线验证。
+- 查询与解题：`status`、`profile`、`show`、`get`、`solve` 和 `doctor`。
+- 本地调用：`lc test` 自动发现 `Solution` 首个公开方法，支持交互输入和 `--stdin` JSON Lines；每组默认超时 1 秒。
+- 编码边界：`solution.py` 只接受 UTF-8/UTF-8 BOM，非法编码受控失败。
+- 提交：当前只支持 Python3；只有明确 `Accepted` 返回退出码 0。
+- 发布：标签触发三平台检查、PyPI Trusted Publisher 和 GitHub Release。
 
-### v0.8 运行上下文与工作区
+## 当前架构阶段
 
-- 新增不可变 `AppPaths`，集中描述用户配置、工作区配置、`solution.py` 和 Session 路径。
-- `auth.py`、`workspace.py`、`doctor.py` 和 service 调用链都显式接收路径，不再在模块导入时捕获 `Path.cwd()`。
-- 跨平台用户配置位置遵循 Windows `%APPDATA%`、macOS `Application Support` 和 Linux `XDG_CONFIG_HOME`/`~/.config`。
-- 新增版本化用户配置 `config.toml` 和工作区标记 `.leetcode-local-cli.toml`。
-- 新增 `lc init [path]`：无路径时交互输入父目录并追加 `leetcode-local-cli`；显式路径表示完整工作区路径；`--yes` 仅允许与显式路径组合。
-- 初始化不存在的工作区时创建目录、工作区配置和空 `solution.py`；已有普通 `solution.py` 保持原内容；重复初始化幂等。
-- 损坏配置、符号链接、断链、目录目标、junction 和 Windows reparse point 会被拒绝，不会绕过验证或静默覆盖。
-- 所有普通命令从用户配置读取默认工作区；当前版本不提供全局 `--workspace`。
-- 官方安装脚本安装并验证绝对 `lc` 路径后，在可交互终端调用 `lc init`；非交互环境或 `LEETCODE_LOCAL_CLI_NO_INIT=1` 会跳过并给出手动命令。
-- 更新安装时，`lc init` 检测到有效默认工作区后直接复用，不重新询问或修改工作区文件。
-
-### 文件与 Session 安全
-
-- `solution.py` 覆盖改用同目录随机临时文件、完整写入和原子替换；写入失败保留旧文件。
-- Session 写入同样使用随机临时文件和原子替换，并拒绝非普通目标。
-- Session 暂时按已确认的阶段性方案保存在默认工作区的 `.leetcode_local_cli/session.json`，以支持维护者授权的真实账号验收。
-- 不迁移或删除旧 `.aether_lc/session.json`；当前无人使用旧版本，用户需要重新登录。
-- `.leetcode_local_cli/` 继续由仓库 `.gitignore` 排除，诊断和错误输出不得包含 Cookie 值。
-
-### v0.9：Chrome 与 Edge 浏览器授权登录
-
-- 普通 `lc login` 按当前日常 Chrome、当前日常 Edge、手动 Cookie 的顺序尝试；`--browser chrome|edge` 可以固定浏览器且不会偷偷切换另一浏览器。
-- Chrome 和 Edge 分别通过默认用户目录中的 `DevToolsActivePort` 连接用户在 `chrome://inspect/#remote-debugging` 或 `edge://inspect/#remote-debugging` 勾选 **Allow remote debugging for this browser instance** 后明确授权的当前实例；approval-only 模式直接使用浏览器 WebSocket，不依赖可能返回 404 的 `/json/version`。
-- 浏览器未运行但遗留授权文件、正在启动或只有后台进程导致 403 时，CLI 打开一次可见窗口，并在 180 秒总时限内重读端点、重试临时连接错误，以便用户在 **Allow remote debugging?** 中选择 **Allow**；身份和协议错误不会被伪装成启动竞态。CLI 不创建专用浏览器配置、不读取 Cookie 数据库，也不关闭日常浏览器。
-- `--devtools-port` 可连接指定浏览器的已有本机端口，且必须与明确的 `--browser` 组合；无人使用的旧实验参数 `--chrome-debug-port` 已删除。
-- HTTP 发现和 WebSocket 端点必须同时属于同一个回环端口，禁用代理和重定向，不扫描端口、不读取或解密浏览器 Cookie 数据库。
-- CLI 通过页面端点调用 `Network.getCookies`，请求范围限定为 `https://leetcode.cn/`，只保留 `LEETCODE_SESSION` 和 `csrftoken`；Cookie 值不会进入终端或异常。
-- 获取后仍通过 LeetCode 在线验证登录态，只有已登录并返回有效用户名时才原子保存 Session，来源记录为 `Chrome DevTools` 或 `Edge DevTools`。
-
-### 既有用户工作流
-
-- `lc login`、`status`、`profile`、`show`、`get`、`solve`、`test`、`doctor` 和 `submit` 的核心能力保持。
-- 当前仍只正式支持 LeetCode 中文站和 Python3 提交。
-- `lc doctor` 默认不执行用户代码；只有 `--run-solution` 才执行。
-- `lc solve` 仍表示切换当前题目，因此可以无确认覆盖普通 `solution.py`。
-
-### v0.9：`lc test` 交互执行与可靠性修复
-
-- `lc test` 在独立持久 worker 中加载 `solution.py`，按定义顺序发现 `Solution` 的第一个公开实例方法；不需要、也不会调用 `run_cases()`。
-- 交互模式输入 `name = value` 参数并展示实际返回值；只允许安全 Python 字面量。每一组使用新的 `Solution` 实例，输入错误、异常或超时会显示受控错误但不终止下一组输入。
-- 默认每组调用限时 1 秒；超时后 worker 被终止，下一组自动重启。连续两次空输入退出；没有输入或任一组出错，最终退出码为 1。
-- `lc test --stdin` 使用同一输入格式、每组一行 JSON 和最终 summary，供 AI/CI 读取；不创建 `cases.json`，也不使用 Rich 表格。
-- 退出码 0 只表示所有已输入调用正常结束，不把“未写断言”伪装为算法正确性。`lc submit` 不调用本地执行，继续只提交 marker 区域。
-- `lc solve` 对空函数签名和 LeetCode 内联 `: pass` 模板生成显式 `raise NotImplementedError("请实现题目方法")`；它同时消除 Pyright 的缺少返回值提示，并阻止空模板以 `None` 作为一次成功调用结束。
-
-### v0.9：`solution.py` 编码错误边界
-
-- 通过共享读取边界只接受 UTF-8，并兼容 Windows 编辑器常见的 UTF-8 BOM。
-- 非 UTF-8 文件获得独立 `INVALID_ENCODING` 状态，不再被误报为权限错误或暴露 `UnicodeDecodeError` traceback。
-- `lc test` 在 runner 启动前失败，`lc doctor --run-solution` 不执行文件，`lc submit` 在创建远端客户端前失败。
-- 不猜测 GBK 等本地编码，不用替换字符继续解析，也不自动转换或覆盖用户文件。
-
-### v0.9：远程提交退出码
-
-- `lc submit` 只有明确获得 `Accepted` 时返回退出码 0。
-- Wrong Answer、Time Limit Exceeded、其他非 Accepted、缺少可识别状态和轮询超时返回退出码 1。
-- 结果无论成功失败都会先正常渲染；退出码只供 Shell、CI 和 AI 判断，不改变用户返回终端继续输入的体验。
-- 网络、认证、编码和响应错误继续由现有边界返回 1；命令使用错误保留退出码 2。
-
-## 当前开发阶段
-
-v0.8 的运行上下文、配置、工作区初始化和安装器集成已经完成。v0.9 完整实现日常 Chrome/Edge 显式授权自动登录，并发布 `lc test` 假通过、无限等待、非 UTF-8 traceback 和提交假成功修复。提交轮询仍需迁移到稳定总超时模型，领域模型、异常边界和 Python API 预览顺延到后续架构阶段。
-
-2026-07-30 验收结果：
-
-- Windows 11：Ruff、Pyright、构建、wheel/sdist、隔离 uv tool 安装和全部 CLI 入口通过；`pytest` 为 198 passed、13 skipped。
-- Windows 真实流程：隐藏手动 Cookie 登录、`status`、`profile`、`show`、`get`、`solve`、`test`、`doctor --run-solution` 均通过；经维护者授权对第 1 题执行一次真实提交，结果 Accepted。
-- Ubuntu 26.04 WSL2：隔离源码、构建、安装器、默认工作区复用、符号链接边界和在线只读流程通过；`pytest` 为 210 passed、1 skipped。通过数差异来自 Windows 专属 junction 用例与 Linux 可执行符号链接用例的跳过条件不同，总收集数一致。
-- `v0.8.0` 标签发布工作流在 Ubuntu、macOS 和 Windows 全部通过，随后成功发布 PyPI 和 GitHub Release。
-
-2026-08-01 v0.9.0 发布验证：
-
-- Ruff format、Ruff lint 和 Pyright 全部通过。
-- Windows 完整 pytest 为 288 passed、13 skipped。
-- wheel 与源码包构建通过，构建产物包含内部 `_test_runner.py`、`local_testing.py` 和共享 `solution_source.py`；`lc --version` 和 `lc test --help` 入口通过。
-- 定向测试确认入口发现、安全字面量、逐组新实例、返回值/原地修改回显、异常、超时重启、交互退出、JSON Lines stdin 和提交隔离符合 `PB-C12`。
-- 定向测试确认非法编码在 test、Doctor、runner 和 submit 中受控失败，UTF-8 BOM 正常读取，符合 `PB-C13`。
-- 定向测试确认 Accepted 返回 0，Wrong Answer、Time Limit Exceeded、缺少状态和轮询超时返回 1，符合 `PB-C14`。
-- 定向测试确认默认 Chrome → Edge → 手动 Cookie 回退、显式浏览器隔离、Chrome/Edge 授权等待、浏览器身份校验和非所有权边界符合 `PB-C15`。
-- Windows Chrome `150.0.7871.187` 已完成一次真实 `lc login --browser chrome` 验收：用户在日常 Chrome 明确开启当前实例调试后，CLI 成功获取所需登录态、在线验证并保存 Session，且没有创建或关闭专用 Chrome。Cookie 值未进入终端或测试报告。
-- Windows Edge `150.0.4078.105` 已完成一次真实 `lc login --browser edge` 验收：后台实例 403 后自动打开可见窗口，用户明确允许连接，CLI 成功获取所需登录态、在线验证并保存 Session；Cookie 值未进入终端或测试报告。
-- Chrome 关闭但遗留 `DevToolsActivePort` 时的自动拉起与启动竞态恢复已通过自动化测试；为避免擅自关闭维护者的日常浏览器，真实关闭后拉起流程仍待手动验收。
-
-## 未完成任务
-
-### 下一批产品决策
-
-- `lc test` 对 `ListNode`、`TreeNode` 等 LeetCode 专用类型的输入转换策略，以及 `--verbose` 与 `lc doctor --run-solution` 的扩展调试输出策略。
-- `lc submit` 的固定次数轮询改为稳定总超时。
-- 提交前静态校验范围。
-- 编辑器配置优先级和安全命令模型。
-- 合法空分页、Broken Pipe 和正式支持的 Python 小版本。
-
-### 长期任务
-
-- 将 service 中的 Typer/Rich 依赖迁出核心业务层。
-- 以类型模型和项目异常逐步替换裸字典与 `typer.Exit`。
-- 提供 Python API 预览并建立站点适配器。
-- 在后续版本重新设计系统秘密存储；v0.8 的明文 Session 不是长期安全终点。
+项目是同步 Python CLI。路径、配置、安全文件操作、浏览器发现、本地 worker 和 HTTP 客户端已有独立边界；`service.py` 仍直接依赖 Typer/Rich，部分成功结果仍是裸字典，尚未形成稳定 Python API。
 
 ## 当前问题
 
-- `.leetcode_local_cli/session.json` 仍包含明文 Cookie；放入同步盘、共享目录或其他 Git 仓库存在泄露风险。
-- `lc submit` 仍使用固定 10 次、每次间隔 0.5 秒的轮询；单次 HTTP 请求另有 10 秒超时，因此尚不能提供精确、可解释的判题总等待时间。
-- 在 Git 仓库根目录执行 `lc init` 会生成未自动忽略的 `.leetcode-local-cli.toml`，使工作树出现未跟踪文件；该标记应提交、忽略还是迁移尚未形成产品结论。
-- Windows 上系统默认 `.py` 关联可能不是编辑器；当前行为仍按既有兼容边界保留。
-- 普通 push 和 Pull Request 尚无日常 CI，标签工作流仍是主要发布门禁。
+1. **提交总超时**：判题仍固定轮询 10 次，不能给出稳定、可解释的总等待时间。
+2. **明文 Session**：Cookie 位于工作区 `.leetcode_local_cli/session.json`，存在误提交、同步或共享风险。
+3. **工作区标记**：Git 仓库中的 `.leetcode-local-cli.toml` 是否提交或忽略尚未形成统一语义。
+4. **日常 CI**：普通 push/PR 尚无常规工作流，主要门禁仍集中在发布标签。
+5. **核心耦合**：业务层仍含 CLI/UI 依赖，公开模型和异常边界未稳定。
 
-## 下一步计划
+低优先级问题：系统 `.py` 关联可能不是编辑器；Broken Pipe、极端分页和正式 Python 小版本范围尚未收口。
 
-1. 把固定 10 次提交轮询改为基于单调时钟的稳定总超时。
-2. 确认 Git 工作区标记的版本控制与忽略策略，避免 `lc init` 长期制造不明确的工作树状态。
-3. 决定 `PB-002` 的 verbose/Doctor 输出范围，并为普通 push 和 Pull Request 增加日常 CI。
-4. 完成上述可靠性门禁后进入核心模型、异常边界与 Python API 预览迁移。
+## 下一步
+
+1. 将提交轮询改为基于单调时钟的总超时，并测试终态、超时和接口异常。
+2. 确认工作区标记的 Git 语义；不允许 CLI 未经确认修改用户仓库 `.gitignore`。
+3. 为普通 push/PR 增加 Ruff、Pyright 和 pytest。
+4. 再逐步解耦核心层、引入结构化模型和项目异常。
+
+更远方向只见 [PROJECT_DESIGN](PROJECT_DESIGN.md)，不视为承诺或排期。
+
+## 最近验证
+
+`v0.9.0` 发布前通过 Ruff、Pyright、Windows 完整测试（288 passed、13 skipped）、wheel/sdist 构建和 CLI smoke test。Chrome 与 Edge 均完成一次维护者明确授权的真实登录验收；真实凭据未进入测试、终端报告或仓库。

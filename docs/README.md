@@ -1,22 +1,26 @@
-# 项目文档索引
+# 项目文档
 
-本目录集中维护 `leetcode-local-cli` 的项目状态、产品边界、架构、技术决策、开发路线、安全审计和发布资料。根目录 `README.md` 面向使用者；根目录 `AGENTS.md` 是 AI 工具自动发现的开发规则入口，因此不迁入本目录。
+根目录 [README](../README.md) 面向使用者；本目录面向维护者。文档按重要性从高到低排列，未实现的长期设想不能覆盖当前源码事实。
 
-## 阅读顺序
+## 核心上下文
 
-当文档内容发生冲突时，按以下顺序判断：
+1. [PROJECT_STATUS.md](PROJECT_STATUS.md)：当前版本、已实现能力、已知问题和下一步。每次开始开发先读。
+2. [ARCHITECTURE.md](ARCHITECTURE.md)：当前模块职责、依赖方向、数据流和架构约束。
+3. [PRODUCT_BOUNDARIES.md](PRODUCT_BOUNDARIES.md)：已经确认、不得由实现偶然改变的用户行为。
+4. [SECURITY_REVIEW.md](SECURITY_REVIEW.md)：凭据、文件写入、用户代码、浏览器和网络边界。
 
-1. [产品边界与待定决策](PRODUCT_BOUNDARIES.md)：已经确认的用户可见行为和实施前必须决定的问题。
-2. [项目状态](PROJECT_STATUS.md)：当前源码已经实现和验证的能力。
-3. [当前架构](ARCHITECTURE.md)：真实模块职责、依赖方向和数据流。
-4. [长期开发计划](DEVELOPMENT_PLAN.md)：唯一的实施路线、优先级和阶段目标。
-5. [v1.0 总体设计大纲](PROJECT_DESIGN.md)：尚未完全落地的长期架构方向。
+## 执行与参考
 
-## 维护资料
+5. [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)：只记录当前优先级和近几步，不绑定未来版本号。
+6. [TECH_DECISIONS.md](TECH_DECISIONS.md)：影响后续开发的技术选择及关键废弃方案。
+7. [PROJECT_DESIGN.md](PROJECT_DESIGN.md)：非承诺性的长期方向；实现前必须重新设计和确认。
+8. [RELEASING.md](RELEASING.md)：发布门禁和标签发布流程。
+9. [release-notes/](release-notes/)：已发布版本的历史记录，不作为当前设计依据。
 
-- [技术决策记录](TECH_DECISIONS.md)：已采用方案、原因、替代方案和未来调整方向。
-- [安全审计与修复清单](SECURITY_REVIEW.md)：当前安全与可靠性风险、修复状态和优先级。
-- [发布流程](RELEASING.md)：本地门禁、Trusted Publisher 和标签发布步骤。
-- [版本化发布说明](release-notes/)：GitHub Release 使用的版本标题和正文。
+## 最小阅读规则
 
-旧 `ROADMAP.md` 已删除。它的历史版本记录由 Git 和根目录 README 保留；未来路线统一维护在 `DEVELOPMENT_PLAN.md`，避免两份计划产生冲突。
+- 普通修复或小功能：读状态、架构、开发计划，再按风险查产品边界或安全审计。
+- 跨模块、公开行为、凭据或文件系统改动：同时读产品边界、技术决策和安全审计。
+- 长期方向仅用于判断演进空间，不能当作已排期需求。
+
+冲突时按 `PRODUCT_BOUNDARIES → PROJECT_STATUS → ARCHITECTURE → DEVELOPMENT_PLAN → PROJECT_DESIGN` 判断。

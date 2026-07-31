@@ -1,30 +1,22 @@
 # 发布流程
 
-`leetcode-local-cli` 使用 GitHub Actions 和 PyPI Trusted Publisher 发布，不在仓库或 GitHub Secrets 中保存 PyPI Token。
+项目使用 GitHub Actions、PyPI Trusted Publisher 和版本化 Release Notes 发布。仓库和 GitHub Secrets 不保存 PyPI Token。
 
-## 首次发布配置
+## 一次性配置
 
-在创建首个发布标签前完成以下一次性配置：
+1. GitHub 创建 `pypi` environment；建议配置 required reviewer。
+2. PyPI 创建 Trusted Publisher：
+   - project：`leetcode-local-cli`
+   - owner：`Aetherialter`
+   - repository：`leetcode-local-cli`
+   - workflow：`release.yml`
+   - environment：`pypi`
 
-1. 在 GitHub 仓库的 `Settings > Environments` 中创建名为 `pypi` 的 environment；建议把维护者本人设置为 required reviewer，避免标签误推后直接发布。
-2. 在 PyPI 的 `Publishing` 页面添加 pending publisher：
-   - PyPI project name：`leetcode-local-cli`
-   - Owner：`Aetherialter`
-   - Repository name：`leetcode-local-cli`
-   - Workflow name：`release.yml`
-   - Environment name：`pypi`
+## 发布准备
 
-项目首次由该工作流成功发布后，pending publisher 会自动转换为项目的 Trusted Publisher。
-
-## Release Notes
-
-每个正式版本在 `docs/release-notes/vX.Y.Z.md` 中维护发布说明。文件第一行是 GitHub Release 标题，第二行留空，其余内容是 Release 正文。
-
-发布工作流会优先使用与标签同名的说明文件；文件缺失时才回退到 GitHub 自动生成的 Release Notes。重跑已创建 Release 的任务时，工作流会使用版本化文件更新标题和正文。
-
-## 本地发布门禁
-
-版本号只在正式发布准备阶段修改。`pyproject.toml`、`uv.lock`、发布标签和构建产物中的版本必须一致。
+1. 更新 `pyproject.toml` 与 `uv.lock`，确保版本一致。
+2. 新建 `docs/release-notes/vX.Y.Z.md`：第一行是 Release 标题，空一行后是正文。
+3. 运行本地门禁：
 
 ```shell
 uv run ruff format --check src tests scripts
@@ -34,7 +26,7 @@ uv run pytest
 uv build --no-sources
 ```
 
-随后分别对 wheel 和源码包执行隔离 smoke test：
+4. 分别从 wheel 和 sdist 运行隔离 smoke test：
 
 ```shell
 export LEETCODE_LOCAL_CLI_EXPECTED_VERSION="$(uv version --short)"
@@ -42,22 +34,16 @@ uv run --isolated --no-project --with dist/*.whl scripts/smoke_test.py
 uv run --isolated --no-project --with dist/*.tar.gz scripts/smoke_test.py
 ```
 
-## 触发发布
+PowerShell 使用 `$env:LEETCODE_LOCAL_CLI_EXPECTED_VERSION = (uv version --short)` 设置变量。
 
-发布工作流只接受以 `v` 开头、并与项目版本完全一致的标签。例如项目版本为 `0.7.1` 时：
+## 触发与门禁
 
-```shell
-git tag -a v0.7.1 -m "v0.7.1"
-git push origin main
-git push origin v0.7.1
-```
+创建并推送与项目版本完全一致的 `vX.Y.Z` 标签。标签工作流依次：
 
-标签推送后，`.github/workflows/release.yml` 会依次：
+1. 在 Linux、macOS、Windows 运行格式、Lint、Pyright、测试和构建。
+2. 在三平台隔离 uv 工具目录验证安装器。
+3. 从 wheel 和 sdist 验证 `lc --version`、`lc --help`。
+4. 使用 OIDC 发布 PyPI。
+5. 使用同版本 Release Notes 创建或更新 GitHub Release。
 
-1. 在 Linux、macOS 和 Windows 上运行格式、Lint、Pyright、测试和构建。
-2. 在三个平台的隔离 uv 工具目录中运行对应安装器。
-3. 分别从 wheel 和源码包启动 `lc --version`、`lc --help`。
-4. 使用 OIDC Trusted Publisher 发布到 PyPI。
-5. PyPI 发布成功后使用版本化 Release Notes 创建 GitHub Release。
-
-任何阶段失败都会阻止后续发布。PyPI 的同一版本不可覆盖，因此禁止移动已发布标签或重新构建同版本的不同产物。
+任何阶段失败都阻止后续发布。PyPI 同一版本不可覆盖；禁止移动已发布标签或用同一版本重建不同产物。真实 Cookie 和远程提交不进入发布工作流。
