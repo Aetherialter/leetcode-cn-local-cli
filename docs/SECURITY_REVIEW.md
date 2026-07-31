@@ -134,4 +134,4 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 - 三平台真实交互初始化需要手动验收。
 - 真实 Cookie 和远程提交只在明确授权环境验证，报告必须脱敏。
 
-2026-07-31 的未发布 `lc test` 交互执行、编码边界与提交退出码修复已在 Windows 通过 Ruff、Pyright、236 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session 或执行维护者的真实 solution.py。
+2026-07-31 的未发布 `lc test` 交互执行、模板占位、编码边界与提交退出码修复已在 Windows 通过 Ruff、Pyright、239 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session 或执行维护者的真实 solution.py。

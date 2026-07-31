@@ -43,7 +43,7 @@ def test_build_solution_content_writes_metadata_and_submit_markers(tmp_path) -> 
     assert "run_cases" not in submission_code
 
 
-def test_build_solution_content_adds_lightweight_pass_placeholder() -> None:
+def test_build_solution_content_adds_explicit_not_implemented_placeholder() -> None:
     metadata = ProblemMetadata(
         problem_id="1",
         submit_question_id="1",
@@ -56,9 +56,25 @@ def test_build_solution_content_adds_lightweight_pass_placeholder() -> None:
         metadata,
     )
 
-    assert (
-        "def twoSum(self, nums: List[int], target: int) -> List[int]: pass" in content
+    assert "def twoSum(self, nums: List[int], target: int) -> List[int]:\n" in content
+    assert '        raise NotImplementedError("请实现题目方法")' in content
+    compile(content, "solution.py", "exec")
+
+
+def test_build_solution_content_replaces_inline_pass_placeholder() -> None:
+    metadata = ProblemMetadata("1", "1", "Two Sum", "two-sum")
+
+    content = workspace.build_solution_content(
+        "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]: pass",
+        metadata,
     )
+
+    assert (
+        "def twoSum(self, nums: List[int], target: int) -> List[int]: pass"
+        not in content
+    )
+    assert '        raise NotImplementedError("请实现题目方法")' in content
+    compile(content, "solution.py", "exec")
 
 
 def test_build_solution_content_does_not_duplicate_existing_pass() -> None:

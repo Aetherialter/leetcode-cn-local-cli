@@ -112,6 +112,7 @@
 #### 工作内容
 
 - [已完成] 用持久独立 worker 加载 `Solution`，按定义顺序选择首个公开实例方法，并在每组调用时创建新实例。
+- [已完成] `lc solve` 将空函数和 LeetCode 内联 `pass` 占位转换为显式 `NotImplementedError`，避免类型检查噪声和空实现假成功。
 - [已完成] 使用 `ast.literal_eval` 受限解析 `name = value` 输入，支持 JSON 风格结果和 JSON Lines stdin，不执行用户输入表达式。
 - [已完成] 为 `lc test` 增加默认每组 1 秒超时、超时重启 worker、正有限 `--timeout` 覆盖和稳定非零退出。
 - [已完成] 保持子进程参数数组调用，不引入 `shell=True`。

@@ -11,7 +11,9 @@ from leetcode_local_cli.local_testing import (
 from leetcode_local_cli.workspace import (
     LocalExecutionStatus,
     LocalExecutionWorker,
+    ProblemMetadata,
     WorkspaceError,
+    build_solution_content,
 )
 
 
@@ -161,6 +163,23 @@ class Solution:
     assert result.status is LocalExecutionStatus.FAILED
     assert result.error == "ZeroDivisionError: division by zero"
     assert "Traceback" not in result.stderr
+
+
+def test_generated_placeholder_is_not_reported_as_success(tmp_path: Path) -> None:
+    solution_file = tmp_path / "solution.py"
+    _write_solution(
+        solution_file,
+        build_solution_content(
+            "class Solution:\n    def solve(self, value: int) -> int: pass",
+            ProblemMetadata("1", "1", "Example", "example"),
+        ),
+    )
+
+    with LocalExecutionWorker(solution_file, timeout=1) as worker:
+        result = worker.execute({"value": 1})
+
+    assert result.status is LocalExecutionStatus.FAILED
+    assert result.error == "NotImplementedError: 请实现题目方法"
 
 
 def test_worker_timeout_restarts_for_a_later_input_group(tmp_path: Path) -> None:

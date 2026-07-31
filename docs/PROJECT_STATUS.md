@@ -51,6 +51,7 @@
 - 默认每组调用限时 1 秒；超时后 worker 被终止，下一组自动重启。连续两次空输入退出；没有输入或任一组出错，最终退出码为 1。
 - `lc test --stdin` 使用同一输入格式、每组一行 JSON 和最终 summary，供 AI/CI 读取；不创建 `cases.json`，也不使用 Rich 表格。
 - 退出码 0 只表示所有已输入调用正常结束，不把“未写断言”伪装为算法正确性。`lc submit` 不调用本地执行，继续只提交 marker 区域。
+- `lc solve` 对空函数签名和 LeetCode 内联 `: pass` 模板生成显式 `raise NotImplementedError("请实现题目方法")`；它同时消除 Pyright 的缺少返回值提示，并阻止空模板以 `None` 作为一次成功调用结束。
 
 ### 未发布：`solution.py` 编码错误边界
 
@@ -80,7 +81,7 @@ v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实
 2026-07-31 当前源码验证：
 
 - Ruff format、Ruff lint 和 Pyright 全部通过。
-- Windows 完整 pytest 为 236 passed、13 skipped。
+- Windows 完整 pytest 为 239 passed、13 skipped。
 - wheel 与源码包构建通过，构建产物包含内部 `_test_runner.py`、`local_testing.py` 和共享 `solution_source.py`；`lc --version` 和 `lc test --help` 入口通过。
 - 定向测试确认入口发现、安全字面量、逐组新实例、返回值/原地修改回显、异常、超时重启、交互退出、JSON Lines stdin 和提交隔离符合 `PB-C12`。
 - 定向测试确认非法编码在 test、Doctor、runner 和 submit 中受控失败，UTF-8 BOM 正常读取，符合 `PB-C13`。

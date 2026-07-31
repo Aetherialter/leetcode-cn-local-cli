@@ -129,9 +129,12 @@ lc submit
 
 # @lc submit_begin
 class Solution:
-    def twoSum(self, nums: List[int], target: int) -> List[int]: pass
+    def twoSum(self, nums: List[int], target: int) -> List[int]:
+        raise NotImplementedError("请实现题目方法")
 # @lc submit_end
 ```
+
+生成模板使用显式 `NotImplementedError` 占位，而不是 `pass`：这样 Pyright 不会把待实现方法误报为“缺少返回值”，执行 `lc test` 时也会清晰失败，而不会把隐式的 `None` 显示成一次正常调用。开始实现后应删除这行并返回题目要求的结果。
 
 `lc submit` 只提交：
 

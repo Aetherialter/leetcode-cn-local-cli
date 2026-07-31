@@ -20,6 +20,7 @@ from leetcode_local_cli.solution_source import (
 METADATA_PREFIX = "# @lc "
 START_FLAG = "# @lc submit_begin"
 END_FLAG = "# @lc submit_end"
+NOT_IMPLEMENTED_PLACEHOLDER = 'raise NotImplementedError("请实现题目方法")'
 
 SOLUTION_FILE_HEADER = """# pyright: reportUnusedImport=false, reportUnusedVariable=false
 # ruff: noqa: F401, F841
@@ -91,8 +92,20 @@ class LocalExecutionResult:
 
 def _normalize_python_code(python_code: str) -> str:
     code = python_code.rstrip()
-    if code and code.splitlines()[-1].rstrip().endswith(":"):
-        return f"{code} pass"
+    if not code:
+        return code
+
+    lines = code.splitlines()
+    last_line = lines[-1]
+    stripped_last_line = last_line.rstrip()
+    indentation = last_line[: len(last_line) - len(last_line.lstrip())]
+    if stripped_last_line.endswith(": pass"):
+        header = stripped_last_line.removesuffix("pass").rstrip()
+        return "\n".join(
+            [*lines[:-1], header, f"{indentation}    {NOT_IMPLEMENTED_PLACEHOLDER}"]
+        )
+    if stripped_last_line.endswith(":"):
+        return f"{code}\n{indentation}    {NOT_IMPLEMENTED_PLACEHOLDER}"
     return code
 
 
