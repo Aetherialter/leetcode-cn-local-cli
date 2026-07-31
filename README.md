@@ -150,8 +150,11 @@ class Solution:
 - 当前不保存完整题面到本地，也不引入本地数据库。
 - `lc solve` 会强制覆盖普通 `solution.py`，但拒绝符号链接、断链、目录、目录链接和 Windows reparse point。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
-- `lc test` 默认隐藏 Python traceback，只展示本地测试通过或失败。
+- `lc test` 对常规运行失败默认隐藏 Python traceback，只展示本地测试通过或失败；非 UTF-8 `solution.py` 当前仍可能暴露 `UnicodeDecodeError` traceback。
 - 当前 `lc test` 执行整个 `solution.py`，不验证或主动调用 `run_cases()`；缺少该函数的非空脚本可能显示通过，此行为正在重新定界。
+- 当前 `lc test` 没有总超时；不要用它运行可能无限循环或长期阻塞的不可信代码。
+- 当前 `lc submit` 在非 Accepted 或轮询超时时仍可能返回退出码 0；自动化流程不能只根据退出码判断提交通过。
+- 在 Git 仓库根目录执行 `lc init` 会创建 `.leetcode-local-cli.toml`，项目当前不会自动修改 `.gitignore`；该标记的提交与忽略策略仍在确认。
 - 树、链表等题型中，LeetCode 模板里的 `TreeNode` / `ListNode` 定义默认保持注释状态；如需本地构造用例，请自行取消注释并编写测试数据。
 - `lc doctor` 会向 LeetCode 中文站发送一次登录态查询，并静态检查 `solution.py` 的存在性、可读性、Python 语法和提交结构；默认不会执行文件。
 - `lc doctor --run-solution` 会额外运行语法有效的 `solution.py`，本地运行超过 10 秒会判定失败。

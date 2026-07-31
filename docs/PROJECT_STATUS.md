@@ -1,8 +1,10 @@
 # 项目状态
 
-最近更新：2026-07-30
+最近更新：2026-07-31
 
 当前开发版本：`v0.8.0`
+
+当前发布状态：`v0.8.0` 已发布到 PyPI 和 GitHub Releases。
 
 本文是项目长期开发上下文的状态入口，只记录源码、测试和当前文档已经确认的事实。用户可见行为以 [README](../README.md) 和 [产品边界](PRODUCT_BOUNDARIES.md) 为准；安全问题以 [安全审计](SECURITY_REVIEW.md) 为准。
 
@@ -44,9 +46,14 @@
 
 ## 当前开发阶段
 
-v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实现，并已完成本地发布前质量门禁。下一阶段是 v0.9 的领域模型、异常边界和 Python API 预览，不应在 v0.8 中继续扩大功能范围。
+v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实现、发布并完成 Windows 与 Linux/WSL 双平台验收。当前应先收敛验收中稳定复现的行为缺口，再进入 v0.9 的领域模型、异常边界和 Python API 预览。
 
-当前本地验证结果：Ruff format/check、Pyright、构建、`lc --version` 和 `lc --help` 均通过；`pytest` 为 198 passed、13 skipped。Windows 隔离安装冒烟测试已使用 v0.8.0 wheel 通过官方 PowerShell 安装脚本完成，验证了安装后绝对路径调用、首次初始化和项目外复用默认工作区。
+2026-07-30 验收结果：
+
+- Windows 11：Ruff、Pyright、构建、wheel/sdist、隔离 uv tool 安装和全部 CLI 入口通过；`pytest` 为 198 passed、13 skipped。
+- Windows 真实流程：隐藏手动 Cookie 登录、`status`、`profile`、`show`、`get`、`solve`、`test`、`doctor --run-solution` 均通过；经维护者授权对第 1 题执行一次真实提交，结果 Accepted。
+- Ubuntu 26.04 WSL2：隔离源码、构建、安装器、默认工作区复用、符号链接边界和在线只读流程通过；`pytest` 为 210 passed、1 skipped。通过数差异来自 Windows 专属 junction 用例与 Linux 可执行符号链接用例的跳过条件不同，总收集数一致。
+- `v0.8.0` 标签发布工作流在 Ubuntu、macOS 和 Windows 全部通过，随后成功发布 PyPI 和 GitHub Release。
 
 ## 未完成任务
 
@@ -69,14 +76,16 @@ v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实
 ## 当前问题
 
 - `.leetcode_local_cli/session.json` 仍包含明文 Cookie；放入同步盘、共享目录或其他 Git 仓库存在泄露风险。
-- `lc test` 仍可能把缺少有效测试入口的可编译脚本判定为通过，且没有超时。
-- 非 Accepted 判题和轮询超时尚未统一返回非零退出码。
+- 非 UTF-8 `solution.py` 会让 `lc test`、`lc doctor` 和 `lc submit` 暴露 `UnicodeDecodeError` traceback，尚未形成稳定编码错误边界。
+- `lc test` 会把缺少有效 `run_cases()` 入口但可正常退出的脚本判定为通过，且没有总超时。
+- `lc submit` 对非 Accepted 判题和轮询超时仍可能返回退出码 0，Shell/CI 不能只依赖退出码判断通过。
+- 在 Git 仓库根目录执行 `lc init` 会生成未自动忽略的 `.leetcode-local-cli.toml`，使工作树出现未跟踪文件；该标记应提交、忽略还是迁移尚未形成产品结论。
 - Windows 上系统默认 `.py` 关联可能不是编辑器；当前行为仍按既有兼容边界保留。
 - 普通 push 和 Pull Request 尚无日常 CI，标签工作流仍是主要发布门禁。
 
 ## 下一步计划
 
-1. 完成 v0.8.0 全量质量、构建、入口和隔离安装验证。
-2. 对官方安装脚本在真实 Windows、macOS 和 Linux 交互终端执行手动验收。
-3. 在明确授权下，使用不会输出 Cookie 的真实账号流程验证一次远程提交。
-4. 进入 v0.9 前先确定本地测试和远程提交的剩余产品语义。
+1. 依次确认 `PB-001`、`PB-002` 和 `PB-006`，修复本地测试入口、总超时和非 UTF-8 错误边界。
+2. 确认 `PB-003`，让非 Accepted 与轮询超时获得稳定的非零退出语义。
+3. 确认 Git 工作区标记的版本控制与忽略策略，避免 `lc init` 长期制造不明确的工作树状态。
+4. 为普通 push 和 Pull Request 增加日常 CI，再进入 v0.9 核心模型与异常边界迁移。

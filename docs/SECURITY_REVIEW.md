@@ -2,7 +2,7 @@
 
 初次审计日期：2026-07-20
 
-最近更新：2026-07-30
+最近更新：2026-07-31
 
 审计范围：`src/`、安装脚本、发布工作流、运行时依赖，以及 v0.8 路径、配置、工作区与 Session 变更。
 
@@ -76,11 +76,23 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 
 | ID | 等级 | 问题 |
 | --- | --- | --- |
-| RT-002 | 中 | 非 UTF-8 `solution.py` 的错误边界尚未收敛 |
-| RT-003 | 中 | 缺少有效 `run_cases()` 的脚本可能显示测试通过 |
-| RT-004 | 中 | 非 Accepted 判题可能仍返回退出码 0 |
+| RT-002 | 中 | 非 UTF-8 `solution.py` 会让 `test`、`doctor`、`submit` 暴露 `UnicodeDecodeError` traceback |
+| RT-003 | 中 | 缺少有效 `run_cases()` 的脚本可能显示测试通过，且 `lc test` 没有总超时 |
+| RT-004 | 中 | 非 Accepted 判题和轮询超时可能仍返回退出码 0 |
 | RT-005 | 低 | Broken Pipe 可能产生假失败 |
 | RT-006 | 低 | 极大分页偏移的错误归因不够准确 |
+| RT-007 | 低 | Git 仓库作为工作区时，未自动忽略的 `.leetcode-local-cli.toml` 会使工作树变脏 |
+
+## v0.8.0 双平台验收证据
+
+2026-07-30 的脱敏验收补充了以下真实证据：
+
+- Windows 11 完成隐藏手动 Cookie 登录、Session 跨命令复用、在线只读流程、Doctor、本地执行和一次维护者授权的 Accepted 提交。
+- Ubuntu 26.04 WSL2 完成隔离构建、安装器、XDG 配置、POSIX Session 权限、符号链接/断链拒绝和在线只读流程；为避免重复远端副作用，没有再次真实提交。
+- 两个平台都没有在报告、构建产物或 Git 跟踪内容中发现 Cookie；Windows Session 在在线命令前后保持不变。
+- 发布标签的 Ubuntu、macOS、Windows 自动化门禁、wheel/sdist smoke test、PyPI Trusted Publishing 和 GitHub Release 均成功。
+
+这些结果证明已执行范围内的控制有效，但不替代独立物理 Linux、真实 macOS、不同浏览器密钥后端或长期秘密存储验证。
 
 ## 已有安全措施
 
