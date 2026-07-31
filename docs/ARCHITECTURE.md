@@ -122,7 +122,7 @@ CLI 命令
 - `lc test` 先静态检查明确的 `solution.py`，再由 `workspace.run_local_tests()` 启动 `_test_runner` 子进程。
 - runner 先用 AST 判断顶层 `run_cases()` 是否存在、是否为受支持的同步入口，以及是否仍为空实现；缺失入口不会为了检查而执行文件顶层代码。
 - 有效入口以非 `__main__` 名称加载，避免模板中的 main guard 与 CLI 重复调用；随后显式调用一次 `run_cases()`。
-- 子进程 stdout、stderr 和内部退出码映射为不可变 `LocalTestResult`。CLI 安全显示外部文本，并把未配置、失败和默认 10 秒超时统一映射为退出码 1。
+- 子进程 stdout、stderr 和内部退出码映射为不可变 `LocalTestResult`。CLI 安全显示外部文本，并把未配置、失败和默认 1 秒超时统一映射为退出码 1。
 - Doctor 使用同一 Session/solution 路径，默认只静态检查。
 - 提交只读取明确路径中的 marker 区域并使用同工作区 Session，不检查或执行 `run_cases()`。
 

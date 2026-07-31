@@ -105,7 +105,7 @@ lc submit
 | `lc show --limit 20 --skip 0` | 分页展示题目索引，`limit` 单次最大为 100 |
 | `lc get <题号>` | 在线展示题目详情 |
 | `lc solve <题号>` | 原子覆盖生成默认工作区的 `solution.py` |
-| `lc test [--timeout 秒数]` | 执行一次 `run_cases()`；默认总超时 10 秒 |
+| `lc test [--timeout 秒数]` | 执行一次 `run_cases()`；默认总超时 1 秒 |
 | `lc doctor` | 诊断 Session、网络、Cookie 和 `solution.py`，默认不执行代码 |
 | `lc doctor --run-solution` | 额外运行当前工作区的 `solution.py` |
 | `lc submit` | 提交当前 `solution.py` 的提交区域代码 |
@@ -154,7 +154,7 @@ def run_cases() -> None:
     assert result == [0, 1]
 ```
 
-主动执行 `lc test` 时，CLI 会在独立 Python 子进程中加载 `solution.py`，并且只调用一次同步、无参数的 `run_cases()`。以下情况都会返回退出码 1：入口缺失或不可调用、模板仍是默认空实现、断言失败、运行时异常，以及超过默认 10 秒总超时。用户的 stdout 和简化错误会显示，但不会输出 Python traceback。测试子进程不读取交互式终端输入；测试变量应直接写在 `run_cases()` 中。`--timeout` 只接受大于 0 的有限秒数，非法参数返回退出码 2。
+主动执行 `lc test` 时，CLI 会在独立 Python 子进程中加载 `solution.py`，并且只调用一次同步、无参数的 `run_cases()`。以下情况都会返回退出码 1：入口缺失或不可调用、模板仍是默认空实现、断言失败、运行时异常，以及超过默认 1 秒总超时。用户的 stdout 和简化错误会显示，但不会输出 Python traceback。测试子进程不读取交互式终端输入；测试变量应直接写在 `run_cases()` 中。`--timeout` 只接受大于 0 的有限秒数，非法参数返回退出码 2。
 
 本地自测不是远程提交的前置条件。确认当前代码正确时可以直接执行 `lc submit`；提交命令不会检查或运行 `run_cases()`，而且 marker 外的本地测试代码不会发送到 LeetCode。
 
@@ -169,7 +169,7 @@ def run_cases() -> None:
 - `lc solve` 会强制覆盖普通 `solution.py`，但拒绝符号链接、断链、目录、目录链接和 Windows reparse point。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
 - `lc test` 会展示用户程序的 stdout 和简化错误，但不展示 Python traceback；非 UTF-8 `solution.py` 当前仍可能在 CLI 的预检查阶段暴露 `UnicodeDecodeError` traceback。
-- `lc test` 默认 10 秒总超时只约束直接启动的测试子进程；本地代码仍以当前用户权限运行，不是安全沙箱。
+- `lc test` 默认采用 1 秒严格总超时，近似 LeetCode 的限时运行体验，但它还包含本地 Python 进程启动、导入和测试数据构造时间，并不等同于远端判题的算法运行时间；慢用例可显式使用 `--timeout`。本地代码仍以当前用户权限运行，不是安全沙箱。
 - 当前 `lc submit` 在非 Accepted 或轮询超时时仍可能返回退出码 0；自动化流程不能只根据退出码判断提交通过。
 - 在 Git 仓库根目录执行 `lc init` 会创建 `.leetcode-local-cli.toml`，项目当前不会自动修改 `.gitignore`；该标记的提交与忽略策略仍在确认。
 - 树、链表等题型中，LeetCode 模板里的 `TreeNode` / `ListNode` 定义默认保持注释状态；如需本地构造用例，请自行取消注释并编写测试数据。

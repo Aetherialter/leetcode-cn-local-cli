@@ -273,7 +273,7 @@ def test(
             "--timeout",
             help="本地自测总超时秒数",
         ),
-    ] = 10.0,
+    ] = 1.0,
 ) -> None:
     if not math.isfinite(timeout) or timeout <= 0:
         raise BadParameter("必须是大于 0 的有限秒数", param_hint="--timeout")

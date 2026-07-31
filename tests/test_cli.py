@@ -351,6 +351,7 @@ def test_test_command_rejects_invalid_timeout(timeout: str) -> None:
 
 
 def test_test_command_reports_timeout(monkeypatch) -> None:
+    received_timeouts = []
     monkeypatch.setattr(
         cli,
         "inspect_solution_file",
@@ -359,17 +360,21 @@ def test_test_command_reports_timeout(monkeypatch) -> None:
     monkeypatch.setattr(
         cli,
         "run_local_tests",
-        lambda path, *, timeout: LocalTestResult(
-            status=LocalTestStatus.TIMED_OUT,
-            stdout="partial output\n",
+        lambda path, *, timeout: (
+            received_timeouts.append(timeout)
+            or LocalTestResult(
+                status=LocalTestStatus.TIMED_OUT,
+                stdout="partial output\n",
+            )
         ),
     )
 
     result = runner.invoke(cli.app, ["test"])
 
     assert result.exit_code == 1
+    assert received_timeouts == [1.0]
     assert "partial output" in result.output
-    assert "执行时间超过 10 秒" in result.output
+    assert "执行时间超过 1 秒" in result.output
 
 
 def test_submit_does_not_run_local_tests(monkeypatch) -> None:
