@@ -91,6 +91,7 @@ def test_all_dynamic_renderers_treat_external_markup_as_plain_text(
     ui.success(MARKUP_PAYLOAD)
     ui.warning(MARKUP_PAYLOAD)
     ui.error(MARKUP_PAYLOAD)
+    ui.render_local_test_output(MARKUP_PAYLOAD)
     ui.render_profile(
         {
             "username": MARKUP_PAYLOAD,
@@ -160,7 +161,7 @@ def test_terminal_control_characters_are_removed_from_rendered_output(
     output = StringIO()
     monkeypatch.setattr(ui, "console", _terminal_console(output))
 
-    ui.error(payload)
+    ui.render_local_test_output(payload)
 
     rendered = output.getvalue()
     assert "\x1b]8;" not in rendered

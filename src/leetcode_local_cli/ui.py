@@ -93,6 +93,13 @@ def error(message: str) -> None:
     console.print(_external_text(message, style="bold red"))
 
 
+def render_local_test_output(output: str) -> None:
+    if not output:
+        return
+    end = "" if output.endswith("\n") else "\n"
+    console.print(_external_text(output), end=end)
+
+
 def render_profile(profile: dict[str, Any]) -> None:
     solved = profile["solved"]
     total = profile["total"]

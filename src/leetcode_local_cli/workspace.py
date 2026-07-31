@@ -5,6 +5,10 @@ from pathlib import Path
 import subprocess
 import sys
 
+from leetcode_local_cli._test_runner import (
+    EXIT_MISSING_ENTRY,
+    EXIT_NOT_CONFIGURED,
+)
 from leetcode_local_cli.safe_files import SafeFileError, atomic_write_text
 
 METADATA_PREFIX = "# @lc "
@@ -58,12 +62,27 @@ class SolutionFileStatus(str, Enum):
     NOT_SUBMITTABLE = "not_submittable"
 
 
+class LocalTestStatus(str, Enum):
+    PASSED = "passed"
+    MISSING_ENTRY = "missing_entry"
+    NOT_CONFIGURED = "not_configured"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+
+
 @dataclass(frozen=True)
 class SolutionFileInspection:
     status: SolutionFileStatus
     metadata: ProblemMetadata | None = None
     detail: str = ""
     syntax_line: int | None = None
+
+
+@dataclass(frozen=True)
+class LocalTestResult:
+    status: LocalTestStatus
+    stdout: str = ""
+    stderr: str = ""
 
 
 def _normalize_python_code(python_code: str) -> str:
@@ -134,6 +153,62 @@ def run_solution_file(
         text=True,
         cwd=path.parent,
         timeout=timeout,
+    )
+
+
+def _timeout_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def run_local_tests(path: Path, *, timeout: float) -> LocalTestResult:
+    path = Path(os.path.abspath(os.fspath(path)))
+    environment = os.environ.copy()
+    environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONUNBUFFERED"] = "1"
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "leetcode_local_cli._test_runner",
+                str(path),
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=path.parent,
+            env=environment,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return LocalTestResult(
+            status=LocalTestStatus.TIMED_OUT,
+            stdout=_timeout_output(exc.stdout),
+            stderr=_timeout_output(exc.stderr),
+        )
+    except OSError as exc:
+        return LocalTestResult(
+            status=LocalTestStatus.FAILED,
+            stderr=f"{type(exc).__name__}: {exc}",
+        )
+
+    status = LocalTestStatus.FAILED
+    if result.returncode == 0:
+        status = LocalTestStatus.PASSED
+    elif result.returncode == EXIT_MISSING_ENTRY:
+        status = LocalTestStatus.MISSING_ENTRY
+    elif result.returncode == EXIT_NOT_CONFIGURED:
+        status = LocalTestStatus.NOT_CONFIGURED
+    return LocalTestResult(
+        status=status,
+        stdout=result.stdout,
+        stderr=result.stderr,
     )
 
 

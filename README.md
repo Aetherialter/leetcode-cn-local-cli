@@ -2,7 +2,7 @@
 
 一个面向 LeetCode 中文站的轻量本地刷题 CLI。它复用浏览器登录态，在线获取题目，在显式配置的默认工作区维护单文件 `solution.py`，并支持本地测试和远程提交。
 
-当前版本：`v0.8.0`
+当前已发布版本：`v0.8.0`；当前源码包含尚未发布的 `lc test` 可靠性修复。
 
 ## 长期开发手册
 
@@ -19,7 +19,7 @@
 - 使用 `lc init` 配置的默认工作区和单个 `solution.py`。
 - `lc solve <题号>` 生成可编辑的 Python 解题模板。
 - 生成模板后会按当前系统尝试打开 `solution.py`。
-- `lc test` 执行本地 `solution.py`；`run_cases()` 的最终调用契约仍在产品边界文档中待定。
+- `lc test` 在独立子进程中执行用户编写的 `run_cases()`，展示自测输出，并对空实现、异常和超时返回非零状态。
 - `lc doctor` 一次检查 Session 文件、站点连通性、Cookie 登录态和本地解题文件。
 - `lc submit` 提交 marker 区域代码到 LeetCode 中文站，并轮询判题结果。
 - 生成模板时写入 `problem_id` 和 `submit_question_id`，避免展示题号和 LeetCode 内部提交 ID 混用。
@@ -88,6 +88,8 @@ lc status
 lc get 1
 lc solve 1
 lc test
+# 慢用例可显式调整总超时
+lc test --timeout 30
 lc submit
 ```
 
@@ -103,7 +105,7 @@ lc submit
 | `lc show --limit 20 --skip 0` | 分页展示题目索引，`limit` 单次最大为 100 |
 | `lc get <题号>` | 在线展示题目详情 |
 | `lc solve <题号>` | 原子覆盖生成默认工作区的 `solution.py` |
-| `lc test` | 运行本地 `solution.py` |
+| `lc test [--timeout 秒数]` | 执行一次 `run_cases()`；默认总超时 10 秒 |
 | `lc doctor` | 诊断 Session、网络、Cookie 和 `solution.py`，默认不执行代码 |
 | `lc doctor --run-solution` | 额外运行当前工作区的 `solution.py` |
 | `lc submit` | 提交当前 `solution.py` 的提交区域代码 |
@@ -140,6 +142,22 @@ class Solution:
 
 之间的代码。
 
+## 本地自测契约
+
+`run_cases()` 是用户维护的可选本地调试入口。你可以在其中直接构造变量、打印结果并编写 `assert`：
+
+```python
+def run_cases() -> None:
+    solution = Solution()
+    result = solution.twoSum([2, 7, 11, 15], 9)
+    print(result)
+    assert result == [0, 1]
+```
+
+主动执行 `lc test` 时，CLI 会在独立 Python 子进程中加载 `solution.py`，并且只调用一次同步、无参数的 `run_cases()`。以下情况都会返回退出码 1：入口缺失或不可调用、模板仍是默认空实现、断言失败、运行时异常，以及超过默认 10 秒总超时。用户的 stdout 和简化错误会显示，但不会输出 Python traceback。测试子进程不读取交互式终端输入；测试变量应直接写在 `run_cases()` 中。`--timeout` 只接受大于 0 的有限秒数，非法参数返回退出码 2。
+
+本地自测不是远程提交的前置条件。确认当前代码正确时可以直接执行 `lc submit`；提交命令不会检查或运行 `run_cases()`，而且 marker 外的本地测试代码不会发送到 LeetCode。
+
 ## 当前限制
 
 - 当前仅支持 LeetCode 中文站。
@@ -150,9 +168,8 @@ class Solution:
 - 当前不保存完整题面到本地，也不引入本地数据库。
 - `lc solve` 会强制覆盖普通 `solution.py`，但拒绝符号链接、断链、目录、目录链接和 Windows reparse point。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
-- `lc test` 对常规运行失败默认隐藏 Python traceback，只展示本地测试通过或失败；非 UTF-8 `solution.py` 当前仍可能暴露 `UnicodeDecodeError` traceback。
-- 当前 `lc test` 执行整个 `solution.py`，不验证或主动调用 `run_cases()`；缺少该函数的非空脚本可能显示通过，此行为正在重新定界。
-- 当前 `lc test` 没有总超时；不要用它运行可能无限循环或长期阻塞的不可信代码。
+- `lc test` 会展示用户程序的 stdout 和简化错误，但不展示 Python traceback；非 UTF-8 `solution.py` 当前仍可能在 CLI 的预检查阶段暴露 `UnicodeDecodeError` traceback。
+- `lc test` 默认 10 秒总超时只约束直接启动的测试子进程；本地代码仍以当前用户权限运行，不是安全沙箱。
 - 当前 `lc submit` 在非 Accepted 或轮询超时时仍可能返回退出码 0；自动化流程不能只根据退出码判断提交通过。
 - 在 Git 仓库根目录执行 `lc init` 会创建 `.leetcode-local-cli.toml`，项目当前不会自动修改 `.gitignore`；该标记的提交与忽略策略仍在确认。
 - 树、链表等题型中，LeetCode 模板里的 `TreeNode` / `ListNode` 定义默认保持注释状态；如需本地构造用例，请自行取消注释并编写测试数据。
@@ -219,6 +236,7 @@ uv run ruff check solution.py
 ```text
 src/leetcode_local_cli/
   auth.py       Cookie 读取与本地 session
+  _test_runner.py 隔离加载并执行 run_cases 的子进程入口
   client.py     LeetCode 中文站 HTTP 客户端
   cli.py        Typer 命令入口
   config.py     版本化配置读取与工作区初始化
@@ -229,7 +247,7 @@ src/leetcode_local_cli/
   service.py    应用层流程编排
   ui.py         Rich 终端输出
   version.py    已安装发行版版本读取
-  workspace.py  solution.py 生成、解析与运行
+  workspace.py  solution.py 生成、解析、运行与本地测试结果映射
 scripts/
   install.sh    Linux/macOS 一键安装器
   install.ps1   Windows PowerShell 一键安装器

@@ -1,8 +1,9 @@
+import math
 import sys
 from pathlib import Path
 from typing import Annotated
 
-from typer import Argument, Exit, Option, Typer, confirm, echo, prompt
+from typer import Argument, BadParameter, Exit, Option, Typer, confirm, echo, prompt
 
 from leetcode_local_cli.auth import (
     SessionFileError,
@@ -27,6 +28,7 @@ from leetcode_local_cli.ui import (
     info,
     loading,
     render_doctor_report,
+    render_local_test_output,
     render_submission_result,
     success,
     warning,
@@ -45,11 +47,12 @@ from leetcode_local_cli.service import (
     submit_current_solution,
 )
 from leetcode_local_cli.workspace import (
+    LocalTestStatus,
     ProblemMetadata,
     SolutionFileStatus,
     WorkspaceError,
     inspect_solution_file,
-    run_solution_file,
+    run_local_tests,
     write_solution_file,
 )
 from leetcode_local_cli.version import PACKAGE_NAME, get_version
@@ -263,7 +266,18 @@ def solve(question_id: str) -> None:
 
 
 @app.command()
-def test() -> None:
+def test(
+    timeout: Annotated[
+        float,
+        Option(
+            "--timeout",
+            help="本地自测总超时秒数",
+        ),
+    ] = 10.0,
+) -> None:
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise BadParameter("必须是大于 0 的有限秒数", param_hint="--timeout")
+
     paths = _require_app_paths()
     inspection = inspect_solution_file(paths.solution_file)
     match inspection.status:
@@ -285,11 +299,24 @@ def test() -> None:
             error(f"solution.py 存在 Python 语法错误（{line}）")
             raise Exit(1)
 
-    result = run_solution_file(paths.solution_file)
-    if result.returncode:
-        error("本地测试失败")
-        raise Exit(result.returncode)
-    success("本地测试通过")
+    result = run_local_tests(paths.solution_file, timeout=timeout)
+    render_local_test_output(result.stdout)
+    render_local_test_output(result.stderr)
+    match result.status:
+        case LocalTestStatus.PASSED:
+            success("本地自测执行成功")
+        case LocalTestStatus.MISSING_ENTRY:
+            error("未找到可执行的 run_cases()，请检查本地自测入口")
+            raise Exit(1)
+        case LocalTestStatus.NOT_CONFIGURED:
+            error("尚未配置本地自测用例，请在 run_cases() 中添加测试")
+            raise Exit(1)
+        case LocalTestStatus.TIMED_OUT:
+            error(f"本地自测超时：执行时间超过 {timeout:g} 秒")
+            raise Exit(1)
+        case LocalTestStatus.FAILED:
+            error("本地自测执行失败")
+            raise Exit(1)
 
 
 @app.command()

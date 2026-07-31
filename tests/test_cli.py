@@ -10,6 +10,8 @@ from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
 from leetcode_local_cli.problem import ProblemDetail
 from leetcode_local_cli.paths import AppPaths
 from leetcode_local_cli.workspace import (
+    LocalTestResult,
+    LocalTestStatus,
     SolutionFileInspection,
     SolutionFileStatus,
     WorkspaceError,
@@ -233,8 +235,10 @@ def test_test_command_reports_missing_solution_without_running(monkeypatch) -> N
     )
     monkeypatch.setattr(
         cli,
-        "run_solution_file",
-        lambda path: (_ for _ in ()).throw(AssertionError("should not run")),
+        "run_local_tests",
+        lambda path, *, timeout: (_ for _ in ()).throw(
+            AssertionError("should not run")
+        ),
     )
 
     result = runner.invoke(cli.app, ["test"])
@@ -257,3 +261,128 @@ def test_test_command_reports_syntax_line_without_running(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "第 7 行" in result.output
+
+
+def test_test_command_reports_unconfigured_local_tests(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "inspect_solution_file",
+        lambda path: SolutionFileInspection(status=SolutionFileStatus.READY),
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_local_tests",
+        lambda path, *, timeout: LocalTestResult(status=LocalTestStatus.NOT_CONFIGURED),
+    )
+
+    result = runner.invoke(cli.app, ["test"])
+
+    assert result.exit_code == 1
+    assert "尚未配置本地自测用例" in result.output
+    assert "本地自测执行成功" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    (
+        (LocalTestStatus.MISSING_ENTRY, "未找到可执行的 run_cases()"),
+        (LocalTestStatus.FAILED, "本地自测执行失败"),
+    ),
+)
+def test_test_command_maps_runner_failures_to_nonzero(
+    monkeypatch,
+    status: LocalTestStatus,
+    message: str,
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "inspect_solution_file",
+        lambda path: SolutionFileInspection(status=SolutionFileStatus.READY),
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_local_tests",
+        lambda path, *, timeout: LocalTestResult(
+            status=status,
+            stderr="controlled error\n",
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["test"])
+
+    assert result.exit_code == 1
+    assert "controlled error" in result.output
+    assert message in result.output
+
+
+def test_test_command_displays_output_and_reports_success(monkeypatch) -> None:
+    received_timeouts = []
+    monkeypatch.setattr(
+        cli,
+        "inspect_solution_file",
+        lambda path: SolutionFileInspection(status=SolutionFileStatus.READY),
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_local_tests",
+        lambda path, *, timeout: (
+            received_timeouts.append(timeout)
+            or LocalTestResult(
+                status=LocalTestStatus.PASSED,
+                stdout="[2, 7]\n",
+            )
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["test", "--timeout", "30"])
+
+    assert result.exit_code == 0
+    assert received_timeouts == [30.0]
+    assert "[2, 7]" in result.output
+    assert "本地自测执行成功" in result.output
+
+
+@pytest.mark.parametrize("timeout", ("0", "-1", "nan", "inf"))
+def test_test_command_rejects_invalid_timeout(timeout: str) -> None:
+    result = runner.invoke(cli.app, ["test", "--timeout", timeout])
+
+    assert result.exit_code == 2
+    assert "大于 0 的有限秒数" in result.output
+
+
+def test_test_command_reports_timeout(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "inspect_solution_file",
+        lambda path: SolutionFileInspection(status=SolutionFileStatus.READY),
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_local_tests",
+        lambda path, *, timeout: LocalTestResult(
+            status=LocalTestStatus.TIMED_OUT,
+            stdout="partial output\n",
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["test"])
+
+    assert result.exit_code == 1
+    assert "partial output" in result.output
+    assert "执行时间超过 10 秒" in result.output
+
+
+def test_submit_does_not_run_local_tests(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "submit_current_solution", lambda paths: None)
+    monkeypatch.setattr(cli, "render_submission_result", lambda result: None)
+    monkeypatch.setattr(
+        cli,
+        "run_local_tests",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("submit must not execute local tests")
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["submit"])
+
+    assert result.exit_code == 0

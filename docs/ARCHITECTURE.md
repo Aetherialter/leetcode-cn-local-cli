@@ -1,8 +1,8 @@
 # 当前架构
 
-最近更新：2026-07-30
+最近更新：2026-07-31
 
-本文描述 `v0.8.0` 源码的真实架构。长期 API、双站点和 UI 方向见 [PROJECT_DESIGN](PROJECT_DESIGN.md)，未实现内容不得视为当前能力。
+本文描述 `v0.8.0` 发布后当前源码的真实架构。长期 API、双站点和 UI 方向见 [PROJECT_DESIGN](PROJECT_DESIGN.md)，未实现内容不得视为当前能力。
 
 ## 整体架构
 
@@ -22,6 +22,8 @@ flowchart TD
     SERVICE --> CLIENT["LeetCodeClient"]
     SERVICE --> DOCTOR["doctor 结构化诊断"]
     SERVICE --> WORKSPACE
+    WORKSPACE --> TESTRUNNER["独立本地测试 runner"]
+    TESTRUNNER --> SOLUTION
     AUTH --> SESSION["工作区 Session JSON"]
     WORKSPACE --> SOLUTION["工作区 solution.py"]
     AUTH --> SAFEFILES["safe_files 安全写入"]
@@ -43,6 +45,7 @@ flowchart TD
 | `cli.py` | 命令、参数、交互确认、路径解析、错误和退出码映射 | `--help`、`--version` 不解析工作区；业务命令需要有效默认工作区 |
 | `auth.py` | Chrome/手动 Cookie、Session 保存读取与静态检查 | Session 路径必须由调用者传入；当前只支持 `leetcode.cn` |
 | `workspace.py` | 模板、原子写入、打开、执行、静态检查和提交 marker 解析 | 所有公开工作区操作必须接收明确文件路径 |
+| `_test_runner.py` | 在独立子进程中解析、加载并调用一次用户的 `run_cases()` | 仅接受同步无参数入口；以内部退出码区分缺失、未配置和执行失败 |
 | `service.py` | 账号、题目、Doctor 和提交流程编排 | 仍直接依赖 Typer 与 UI，是 v0.9 后需要继续解耦的过渡层 |
 | `doctor.py` | 把 Session、工作区和远端状态转成结构化检查结果 | 默认不执行用户代码 |
 | `client.py` | 中文站 HTTP、GraphQL、提交和判题查询 | 同步 httpx、固定 Python3 |
@@ -116,9 +119,12 @@ CLI 命令
 
 ### 测试、Doctor 与提交
 
-- `lc test` 在工作区根目录执行明确的 `solution.py` 路径。
+- `lc test` 先静态检查明确的 `solution.py`，再由 `workspace.run_local_tests()` 启动 `_test_runner` 子进程。
+- runner 先用 AST 判断顶层 `run_cases()` 是否存在、是否为受支持的同步入口，以及是否仍为空实现；缺失入口不会为了检查而执行文件顶层代码。
+- 有效入口以非 `__main__` 名称加载，避免模板中的 main guard 与 CLI 重复调用；随后显式调用一次 `run_cases()`。
+- 子进程 stdout、stderr 和内部退出码映射为不可变 `LocalTestResult`。CLI 安全显示外部文本，并把未配置、失败和默认 10 秒超时统一映射为退出码 1。
 - Doctor 使用同一 Session/solution 路径，默认只静态检查。
-- 提交只读取明确路径中的 marker 区域并使用同工作区 Session。
+- 提交只读取明确路径中的 marker 区域并使用同工作区 Session，不检查或执行 `run_cases()`。
 
 ## 模块依赖关系
 
@@ -129,7 +135,8 @@ config -> paths, safe_files, tomllib
 service -> paths, auth, client, doctor, problem, ui, workspace, typer
 doctor -> auth, client result types, workspace
 auth -> browser_cookie3, safe_files
-workspace -> safe_files, subprocess, platform file opener
+workspace -> safe_files, _test_runner constants, subprocess, platform file opener
+_test_runner -> Python standard library
 client -> httpx
 ui -> rich, doctor result types
 problem -> Python standard library
@@ -149,6 +156,7 @@ safe_files -> Python standard library
 6. 核心路径、配置和文件原语不依赖 Typer/Rich。
 7. Cookie 不得进入输出、异常、测试 fixture、提交或发布产物。
 8. 当前保持单文件、中文站、Python3 和同步实现，不借 v0.8 扩大产品范围。
+9. 本地自测是用户主动选择的代码执行；入口校验、一次调用、总超时和受控错误必须由 CLI 保证，远程提交不依赖本地自测。
 
 ## 仍需演进的边界
 

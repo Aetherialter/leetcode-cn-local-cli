@@ -14,7 +14,7 @@ from leetcode_local_cli.workspace import (
 )
 
 
-def test_build_solution_content_writes_metadata_and_submit_markers() -> None:
+def test_build_solution_content_writes_metadata_and_submit_markers(tmp_path) -> None:
     metadata = ProblemMetadata(
         problem_id="1",
         submit_question_id="1",
@@ -37,6 +37,10 @@ def test_build_solution_content_writes_metadata_and_submit_markers() -> None:
     assert "# @lc submit_begin" in content
     assert "# @lc submit_end" in content
     assert "def run_cases() -> None:" in content
+    solution_file = tmp_path / "solution.py"
+    solution_file.write_text(content, encoding="utf-8")
+    _, submission_code = workspace.parse_solution_submission(solution_file)
+    assert "run_cases" not in submission_code
 
 
 def test_build_solution_content_adds_lightweight_pass_placeholder() -> None:
