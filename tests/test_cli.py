@@ -6,6 +6,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from click import unstyle
 from typer.testing import CliRunner
 
 from leetcode_local_cli import cli
@@ -350,7 +351,8 @@ def test_login_devtools_port_requires_explicit_browser(monkeypatch) -> None:
     result = runner.invoke(cli.app, ["login", "--devtools-port", "9222"])
 
     assert result.exit_code == 2
-    assert "--browser chrome" in result.output
+    plain_output = " ".join(unstyle(result.output).split())
+    assert "--browser chrome" in plain_output
 
 
 def test_login_rejects_removed_chrome_debug_port_alias(monkeypatch) -> None:
