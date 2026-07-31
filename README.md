@@ -108,7 +108,7 @@ lc submit
 | `lc test [--timeout 秒数]` | 执行一次 `run_cases()`；默认总超时 1 秒 |
 | `lc doctor` | 诊断 Session、网络、Cookie 和 `solution.py`，默认不执行代码 |
 | `lc doctor --run-solution` | 额外运行当前工作区的 `solution.py` |
-| `lc submit` | 提交当前 `solution.py` 的提交区域代码 |
+| `lc submit` | 提交当前 `solution.py` 的提交区域代码；只有 Accepted 返回退出码 0 |
 
 ## solution.py 规则
 
@@ -170,7 +170,7 @@ def run_cases() -> None:
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
 - `solution.py` 只接受 UTF-8，并兼容 UTF-8 BOM；其他编码会在 `test`、`doctor` 和 `submit` 中受控失败，不执行文件、不发送提交请求，也不展示 `UnicodeDecodeError` traceback。
 - `lc test` 默认采用 1 秒严格总超时，近似 LeetCode 的限时运行体验，但它还包含本地 Python 进程启动、导入和测试数据构造时间，并不等同于远端判题的算法运行时间；慢用例可显式使用 `--timeout`。本地代码仍以当前用户权限运行，不是安全沙箱。
-- 当前 `lc submit` 在非 Accepted 或轮询超时时仍可能返回退出码 0；自动化流程不能只根据退出码判断提交通过。
+- `lc submit` 只有明确获得 `Accepted` 时返回退出码 0；其他判题结果、轮询超时和无法识别的结果返回 1。当前轮询仍使用固定 10 次查询，尚未改为稳定的总超时模型。
 - 在 Git 仓库根目录执行 `lc init` 会创建 `.leetcode-local-cli.toml`，项目当前不会自动修改 `.gitignore`；该标记的提交与忽略策略仍在确认。
 - 树、链表等题型中，LeetCode 模板里的 `TreeNode` / `ListNode` 定义默认保持注释状态；如需本地构造用例，请自行取消注释并编写测试数据。
 - `lc doctor` 会向 LeetCode 中文站发送一次登录态查询，并静态检查 `solution.py` 的存在性、可读性、Python 语法和提交结构；默认不会执行文件。

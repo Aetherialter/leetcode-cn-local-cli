@@ -344,6 +344,8 @@ def doctor(
 def submit() -> None:
     result = submit_current_solution(_require_app_paths())
     render_submission_result(result)
+    if result is None or result.get("status_msg") != "Accepted":
+        raise Exit(1)
 
 
 if __name__ == "__main__":

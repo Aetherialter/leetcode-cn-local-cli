@@ -69,6 +69,13 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 - 不使用替换字符继续编译或提交，不自动猜测 GBK 等编码，也不改写用户文件。
 - CLI 和 Doctor 只展示受控中文提示，不输出 `UnicodeDecodeError` traceback。
 
+### 远程提交假成功退出码
+
+- `lc submit` 先展示判题结果，再由 CLI 独立映射机器退出码。
+- 只有明确的 `status_msg == "Accepted"` 返回 0；非 Accepted、缺少状态和轮询超时返回 1。
+- 网络、认证、编码和响应结构错误继续返回 1，参数使用错误返回 2。
+- 自动化不再把红色失败提示或超时提示误判为成功。
+
 ## 明文 Session 的阶段性控制
 
 目录结构：
@@ -92,7 +99,7 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 
 | ID | 等级 | 问题 |
 | --- | --- | --- |
-| RT-004 | 中 | 非 Accepted 判题和轮询超时可能仍返回退出码 0 |
+| RT-008 | 中 | 提交轮询仍按固定 10 次执行，不是稳定、可配置的总超时 |
 | RT-005 | 低 | Broken Pipe 可能产生假失败 |
 | RT-006 | 低 | 极大分页偏移的错误归因不够准确 |
 | RT-007 | 低 | Git 仓库作为工作区时，未自动忽略的 `.leetcode-local-cli.toml` 会使工作树变脏 |
@@ -128,4 +135,4 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 - 三平台真实交互初始化需要手动验收。
 - 真实 Cookie 和远程提交只在明确授权环境验证，报告必须脱敏。
 
-2026-07-31 的未发布 `lc test` 与编码边界修复已在 Windows 通过 Ruff、Pyright、239 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session。
+2026-07-31 的未发布 `lc test`、编码边界与提交退出码修复已在 Windows 通过 Ruff、Pyright、244 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session。

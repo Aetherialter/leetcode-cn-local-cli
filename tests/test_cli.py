@@ -400,7 +400,11 @@ def test_test_command_reports_timeout(monkeypatch) -> None:
 
 
 def test_submit_does_not_run_local_tests(monkeypatch) -> None:
-    monkeypatch.setattr(cli, "submit_current_solution", lambda paths: None)
+    monkeypatch.setattr(
+        cli,
+        "submit_current_solution",
+        lambda paths: {"state": "SUCCESS", "status_msg": "Accepted"},
+    )
     monkeypatch.setattr(cli, "render_submission_result", lambda result: None)
     monkeypatch.setattr(
         cli,
@@ -413,6 +417,39 @@ def test_submit_does_not_run_local_tests(monkeypatch) -> None:
     result = runner.invoke(cli.app, ["submit"])
 
     assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    ("submission_result", "expected_exit_code"),
+    (
+        ({"state": "SUCCESS", "status_msg": "Accepted"}, 0),
+        ({"state": "SUCCESS", "status_msg": "Wrong Answer"}, 1),
+        ({"state": "SUCCESS", "status_msg": "Time Limit Exceeded"}, 1),
+        ({"state": "SUCCESS"}, 1),
+        (None, 1),
+    ),
+)
+def test_submit_exit_code_reflects_final_judge_result(
+    monkeypatch,
+    submission_result,
+    expected_exit_code: int,
+) -> None:
+    rendered_results = []
+    monkeypatch.setattr(
+        cli,
+        "submit_current_solution",
+        lambda paths: submission_result,
+    )
+    monkeypatch.setattr(
+        cli,
+        "render_submission_result",
+        rendered_results.append,
+    )
+
+    result = runner.invoke(cli.app, ["submit"])
+
+    assert result.exit_code == expected_exit_code
+    assert rendered_results == [submission_result]
 
 
 def test_submit_rejects_invalid_encoding_before_remote_request(

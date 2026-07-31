@@ -59,9 +59,16 @@
 - `lc test` 在 runner 启动前失败，`lc doctor --run-solution` 不执行文件，`lc submit` 在创建远端客户端前失败。
 - 不猜测 GBK 等本地编码，不用替换字符继续解析，也不自动转换或覆盖用户文件。
 
+### 未发布：远程提交退出码
+
+- `lc submit` 只有明确获得 `Accepted` 时返回退出码 0。
+- Wrong Answer、Time Limit Exceeded、其他非 Accepted、缺少可识别状态和轮询超时返回退出码 1。
+- 结果无论成功失败都会先正常渲染；退出码只供 Shell、CI 和 AI 判断，不改变用户返回终端继续输入的体验。
+- 网络、认证、编码和响应错误继续由现有边界返回 1；命令使用错误保留退出码 2。
+
 ## 当前开发阶段
 
-v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实现、发布并完成 Windows 与 Linux/WSL 双平台验收。当前源码已完成验收中 `lc test` 假通过、无限等待和非 UTF-8 traceback 的修复，仍需收敛远程提交退出码，再进入 v0.9 的领域模型、异常边界和 Python API 预览。
+v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实现、发布并完成 Windows 与 Linux/WSL 双平台验收。当前源码已完成验收中 `lc test` 假通过、无限等待、非 UTF-8 traceback 和提交假成功的修复；提交轮询仍需迁移到稳定总超时模型，之后再进入 v0.9 的领域模型、异常边界和 Python API 预览。
 
 2026-07-30 验收结果：
 
@@ -73,17 +80,18 @@ v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实
 2026-07-31 当前源码验证：
 
 - Ruff format、Ruff lint 和 Pyright 全部通过。
-- Windows 完整 pytest 为 239 passed、13 skipped。
+- Windows 完整 pytest 为 244 passed、13 skipped。
 - wheel 与源码包构建通过，构建产物包含内部 `_test_runner.py` 和共享 `solution_source.py`；`lc --version` 和 `lc test --help` 入口通过。
 - 定向测试确认默认/旧/等价空实现不会假通过，已填写入口只执行一次，stdout、异常、非交互 stdin、中文路径、超时和提交隔离符合 `PB-C12`。
 - 定向测试确认非法编码在 test、Doctor、runner 和 submit 中受控失败，UTF-8 BOM 正常读取，符合 `PB-C13`。
+- 定向测试确认 Accepted 返回 0，Wrong Answer、Time Limit Exceeded、缺少状态和轮询超时返回 1，符合 `PB-C14`。
 
 ## 未完成任务
 
 ### 下一批产品决策
 
 - `lc test --verbose` 与 `lc doctor --run-solution` 的扩展调试输出策略。
-- `lc submit` 对 Accepted、非 Accepted 和轮询超时的退出码。
+- `lc submit` 的固定次数轮询改为稳定总超时。
 - 提交前静态校验范围。
 - 编辑器配置优先级和安全命令模型。
 - 合法空分页、Broken Pipe 和正式支持的 Python 小版本。
@@ -98,14 +106,14 @@ v0.8 的运行上下文、配置、工作区初始化和安装器集成已经实
 ## 当前问题
 
 - `.leetcode_local_cli/session.json` 仍包含明文 Cookie；放入同步盘、共享目录或其他 Git 仓库存在泄露风险。
-- `lc submit` 对非 Accepted 判题和轮询超时仍可能返回退出码 0，Shell/CI 不能只依赖退出码判断通过。
+- `lc submit` 仍使用固定 10 次、每次间隔 0.5 秒的轮询；单次 HTTP 请求另有 10 秒超时，因此尚不能提供精确、可解释的判题总等待时间。
 - 在 Git 仓库根目录执行 `lc init` 会生成未自动忽略的 `.leetcode-local-cli.toml`，使工作树出现未跟踪文件；该标记应提交、忽略还是迁移尚未形成产品结论。
 - Windows 上系统默认 `.py` 关联可能不是编辑器；当前行为仍按既有兼容边界保留。
 - 普通 push 和 Pull Request 尚无日常 CI，标签工作流仍是主要发布门禁。
 
 ## 下一步计划
 
-1. 确认 `PB-003`，让非 Accepted 与轮询超时获得稳定的非零退出语义。
+1. 把固定 10 次提交轮询改为基于单调时钟的稳定总超时。
 2. 确认 Git 工作区标记的版本控制与忽略策略，避免 `lc init` 长期制造不明确的工作树状态。
 3. 决定 `PB-002` 的 verbose/Doctor 输出范围，并为普通 push 和 Pull Request 增加日常 CI。
 4. 完成上述可靠性门禁后进入 v0.9 核心模型与异常边界迁移。
