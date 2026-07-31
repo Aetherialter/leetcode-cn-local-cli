@@ -3,8 +3,12 @@
 import ast
 import inspect
 from pathlib import Path
-import runpy
 import sys
+
+from leetcode_local_cli.solution_source import (
+    SolutionSourceEncodingError,
+    read_solution_source,
+)
 
 
 EXIT_TEST_FAILED = 1
@@ -95,19 +99,20 @@ def _is_empty_run_cases(
     )
 
 
-def _load_tree(path: Path) -> ast.Module | None:
+def _load_source(path: Path) -> tuple[str, ast.Module] | None:
     try:
-        source = path.read_text(encoding="utf-8")
-        return ast.parse(source, filename=str(path))
-    except (OSError, UnicodeError, SyntaxError) as exc:
+        source = read_solution_source(path)
+        return source, ast.parse(source, filename=str(path))
+    except (OSError, SolutionSourceEncodingError, SyntaxError) as exc:
         _write_exception_summary(exc)
         return None
 
 
 def run(path: Path) -> int:
-    tree = _load_tree(path)
-    if tree is None:
+    loaded_source = _load_source(path)
+    if loaded_source is None:
         return EXIT_TEST_FAILED
+    source, tree = loaded_source
     run_cases_definition = _find_run_cases(tree)
     if run_cases_definition is None:
         return EXIT_MISSING_ENTRY
@@ -119,8 +124,15 @@ def run(path: Path) -> int:
     if _is_empty_run_cases(run_cases_definition):
         return EXIT_NOT_CONFIGURED
 
+    namespace = {
+        "__name__": "__lc_test__",
+        "__file__": str(path),
+        "__package__": None,
+        "__spec__": None,
+        "__cached__": None,
+    }
     try:
-        namespace = runpy.run_path(str(path), run_name="__lc_test__")
+        exec(compile(source, str(path), "exec"), namespace)
     except BaseException as exc:
         _write_exception_summary(exc)
         return EXIT_TEST_FAILED

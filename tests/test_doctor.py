@@ -208,6 +208,27 @@ def test_diagnose_solution_reports_missing_and_read_error(tmp_path) -> None:
     assert read_error.status is DoctorStatus.FAIL
 
 
+def test_diagnose_solution_rejects_invalid_encoding_without_running(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    solution_file = tmp_path / "solution.py"
+    solution_file.write_bytes(b"\xff\xfeinvalid source")
+    monkeypatch.setattr(
+        "leetcode_local_cli.doctor.run_solution_file",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid source must not run")
+        ),
+    )
+
+    result = diagnose_solution(solution_file, run_solution=True)
+
+    assert result.status is DoctorStatus.FAIL
+    assert "不是有效的 UTF-8 编码" in result.message
+    assert result.suggestion is not None
+    assert "转换为 UTF-8" in result.suggestion
+
+
 @pytest.mark.parametrize(
     ("error_kind", "expected_text"),
     [

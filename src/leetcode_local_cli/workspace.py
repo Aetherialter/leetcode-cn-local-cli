@@ -10,6 +10,10 @@ from leetcode_local_cli._test_runner import (
     EXIT_NOT_CONFIGURED,
 )
 from leetcode_local_cli.safe_files import SafeFileError, atomic_write_text
+from leetcode_local_cli.solution_source import (
+    SolutionSourceEncodingError,
+    read_solution_source,
+)
 
 METADATA_PREFIX = "# @lc "
 START_FLAG = "# @lc submit_begin"
@@ -58,6 +62,7 @@ class SolutionFileStatus(str, Enum):
     MISSING = "missing"
     EMPTY = "empty"
     READ_ERROR = "read_error"
+    INVALID_ENCODING = "invalid_encoding"
     INVALID_SYNTAX = "invalid_syntax"
     NOT_SUBMITTABLE = "not_submittable"
 
@@ -263,9 +268,11 @@ def _parse_solution_submission_content(content: str) -> tuple[ProblemMetadata, s
 
 def parse_solution_submission(path: Path) -> tuple[ProblemMetadata, str]:
     try:
-        content = path.read_text(encoding="utf-8")
+        content = read_solution_source(path)
     except FileNotFoundError as exc:
         raise WorkspaceError("未找到 solution.py，请先执行 lc solve <题号>") from exc
+    except SolutionSourceEncodingError as exc:
+        raise WorkspaceError(str(exc)) from exc
     except OSError as exc:
         raise WorkspaceError("无法读取 solution.py，请检查文件权限") from exc
     return _parse_solution_submission_content(content)
@@ -273,9 +280,14 @@ def parse_solution_submission(path: Path) -> tuple[ProblemMetadata, str]:
 
 def inspect_solution_file(path: Path) -> SolutionFileInspection:
     try:
-        content = path.read_text(encoding="utf-8")
+        content = read_solution_source(path)
     except FileNotFoundError:
         return SolutionFileInspection(status=SolutionFileStatus.MISSING)
+    except SolutionSourceEncodingError as exc:
+        return SolutionFileInspection(
+            status=SolutionFileStatus.INVALID_ENCODING,
+            detail=str(exc),
+        )
     except OSError:
         return SolutionFileInspection(status=SolutionFileStatus.READ_ERROR)
 

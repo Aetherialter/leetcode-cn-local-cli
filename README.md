@@ -168,7 +168,7 @@ def run_cases() -> None:
 - 当前不保存完整题面到本地，也不引入本地数据库。
 - `lc solve` 会强制覆盖普通 `solution.py`，但拒绝符号链接、断链、目录、目录链接和 Windows reparse point。
 - `lc show` 的 `limit` 必须为正整数且不超过 100，`skip` 必须为非负整数。
-- `lc test` 会展示用户程序的 stdout 和简化错误，但不展示 Python traceback；非 UTF-8 `solution.py` 当前仍可能在 CLI 的预检查阶段暴露 `UnicodeDecodeError` traceback。
+- `solution.py` 只接受 UTF-8，并兼容 UTF-8 BOM；其他编码会在 `test`、`doctor` 和 `submit` 中受控失败，不执行文件、不发送提交请求，也不展示 `UnicodeDecodeError` traceback。
 - `lc test` 默认采用 1 秒严格总超时，近似 LeetCode 的限时运行体验，但它还包含本地 Python 进程启动、导入和测试数据构造时间，并不等同于远端判题的算法运行时间；慢用例可显式使用 `--timeout`。本地代码仍以当前用户权限运行，不是安全沙箱。
 - 当前 `lc submit` 在非 Accepted 或轮询超时时仍可能返回退出码 0；自动化流程不能只根据退出码判断提交通过。
 - 在 Git 仓库根目录执行 `lc init` 会创建 `.leetcode-local-cli.toml`，项目当前不会自动修改 `.gitignore`；该标记的提交与忽略策略仍在确认。
@@ -244,6 +244,7 @@ src/leetcode_local_cli/
   paths.py      跨平台路径与 AppPaths 运行上下文
   problem.py    题号解析与题目数据标准化
   safe_files.py 非普通目标拒绝与原子文件写入
+  solution_source.py solution.py 的 UTF-8/BOM 读取与编码错误边界
   service.py    应用层流程编排
   ui.py         Rich 终端输出
   version.py    已安装发行版版本读取

@@ -235,6 +235,35 @@ def run_cases() -> None:
     assert result.stderr == "RuntimeError: simulated failure\n"
 
 
+def test_local_test_runner_accepts_utf8_bom(tmp_path: Path) -> None:
+    solution_file = tmp_path / "solution.py"
+    solution_file.write_text(
+        """
+def run_cases() -> None:
+    print("bom works")
+""",
+        encoding="utf-8-sig",
+    )
+
+    result = workspace.run_local_tests(solution_file, timeout=1)
+
+    assert result.status is LocalTestStatus.PASSED
+    assert result.stdout == "bom works\n"
+
+
+def test_local_test_runner_rejects_invalid_encoding_without_traceback(
+    tmp_path: Path,
+) -> None:
+    solution_file = tmp_path / "solution.py"
+    solution_file.write_bytes(b"\xff\xfeinvalid source")
+
+    result = workspace.run_local_tests(solution_file, timeout=1)
+
+    assert result.status is LocalTestStatus.FAILED
+    assert "不是有效的 UTF-8 编码" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 @pytest.mark.parametrize(
     "definition",
     (

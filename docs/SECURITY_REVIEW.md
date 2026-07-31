@@ -62,6 +62,13 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 - 用户 stdout 和简化错误经过控制字符过滤；异常不把 Python traceback 直接展示给普通 CLI 用户。
 - 该控制不是沙箱。用户代码仍拥有当前账号权限，也可能创建自己的子进程或持久化副作用，只能在可信工作区中运行。
 
+### `solution.py` 非 UTF-8 traceback
+
+- `solution_source.py` 统一按 UTF-8/UTF-8 BOM 读取用户代码，并把解码失败转换为不含原始字节的专用错误。
+- `test` 在启动 runner 前失败；`doctor --run-solution` 不执行无效编码文件；`submit` 在加载 Session 和创建远端客户端前失败。
+- 不使用替换字符继续编译或提交，不自动猜测 GBK 等编码，也不改写用户文件。
+- CLI 和 Doctor 只展示受控中文提示，不输出 `UnicodeDecodeError` traceback。
+
 ## 明文 Session 的阶段性控制
 
 目录结构：
@@ -85,7 +92,6 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 
 | ID | 等级 | 问题 |
 | --- | --- | --- |
-| RT-002 | 中 | 非 UTF-8 `solution.py` 会让 `test`、`doctor`、`submit` 暴露 `UnicodeDecodeError` traceback |
 | RT-004 | 中 | 非 Accepted 判题和轮询超时可能仍返回退出码 0 |
 | RT-005 | 低 | Broken Pipe 可能产生假失败 |
 | RT-006 | 低 | 极大分页偏移的错误归因不够准确 |
@@ -122,4 +128,4 @@ v0.8 已消除导入时当前目录路径、`solution.py` 直接截断写入和�
 - 三平台真实交互初始化需要手动验收。
 - 真实 Cookie 和远程提交只在明确授权环境验证，报告必须脱敏。
 
-2026-07-31 的未发布 `lc test` 修复已在 Windows 通过 Ruff、Pyright、231 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session。
+2026-07-31 的未发布 `lc test` 与编码边界修复已在 Windows 通过 Ruff、Pyright、239 passed/13 skipped 的完整 pytest、wheel/sdist 构建与 CLI 入口检查；没有执行真实远程提交，也没有读取真实 Session。

@@ -307,6 +307,14 @@ def test_parse_solution_submission_reports_missing_file(tmp_path) -> None:
         workspace.parse_solution_submission(tmp_path / "missing.py")
 
 
+def test_parse_solution_submission_rejects_non_utf8_source(tmp_path) -> None:
+    solution_file = tmp_path / "solution.py"
+    solution_file.write_bytes(b"\xff\xfeinvalid source")
+
+    with pytest.raises(WorkspaceError, match="不是有效的 UTF-8 编码"):
+        workspace.parse_solution_submission(solution_file)
+
+
 def test_parse_solution_submission_rejects_missing_submit_question_id(
     tmp_path,
     monkeypatch,
@@ -353,6 +361,16 @@ def test_inspect_solution_file_reports_read_and_syntax_errors(tmp_path) -> None:
     assert invalid.syntax_line == 1
 
 
+def test_inspect_solution_file_distinguishes_invalid_encoding(tmp_path) -> None:
+    solution_file = tmp_path / "solution.py"
+    solution_file.write_bytes(b"\x81invalid source")
+
+    result = workspace.inspect_solution_file(solution_file)
+
+    assert result.status is SolutionFileStatus.INVALID_ENCODING
+    assert "不是有效的 UTF-8 编码" in result.detail
+
+
 def test_inspect_solution_file_reports_not_submittable_valid_python(tmp_path) -> None:
     solution_file = tmp_path / "solution.py"
     solution_file.write_text("class Solution:\n    pass\n", encoding="utf-8")
@@ -369,6 +387,20 @@ def test_inspect_solution_file_reports_ready_generated_workspace(tmp_path) -> No
     solution_file.write_text(
         workspace.build_solution_content("class Solution:\n    pass", metadata),
         encoding="utf-8",
+    )
+
+    result = workspace.inspect_solution_file(solution_file)
+
+    assert result.status is SolutionFileStatus.READY
+    assert result.metadata == metadata
+
+
+def test_inspect_solution_file_accepts_utf8_bom(tmp_path) -> None:
+    solution_file = tmp_path / "solution.py"
+    metadata = ProblemMetadata("1", "1", "Two Sum", "two-sum")
+    solution_file.write_text(
+        workspace.build_solution_content("class Solution:\n    pass", metadata),
+        encoding="utf-8-sig",
     )
 
     result = workspace.inspect_solution_file(solution_file)

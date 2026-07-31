@@ -42,6 +42,7 @@ flowchart TD
 | `paths.py` | 跨平台用户配置目录、工作区文件名和不可变 `AppPaths` | 只依赖标准库，不导入 CLI、auth 或 workspace |
 | `config.py` | 版本化 TOML 解析、默认工作区解析、非破坏初始化 | 不负责交互文案；配置损坏时拒绝覆盖 |
 | `safe_files.py` | 普通目标校验、链接/reparse 拒绝、排他创建、随机临时文件和原子替换 | 不理解 LeetCode 业务，只提供文件系统安全原语 |
+| `solution_source.py` | 统一读取 UTF-8/UTF-8 BOM 的 `solution.py`，把解码失败转换为专用异常 | 不猜测编码、不替换非法字节、不修改用户文件 |
 | `cli.py` | 命令、参数、交互确认、路径解析、错误和退出码映射 | `--help`、`--version` 不解析工作区；业务命令需要有效默认工作区 |
 | `auth.py` | Chrome/手动 Cookie、Session 保存读取与静态检查 | Session 路径必须由调用者传入；当前只支持 `leetcode.cn` |
 | `workspace.py` | 模板、原子写入、打开、执行、静态检查和提交 marker 解析 | 所有公开工作区操作必须接收明确文件路径 |
@@ -119,9 +120,10 @@ CLI 命令
 
 ### 测试、Doctor 与提交
 
+- `solution_source.read_solution_source()` 是三条链路共享的解码边界；非 UTF-8 在任何编译、执行或提交解析之前转换为 `INVALID_ENCODING` 或 `WorkspaceError`。
 - `lc test` 先静态检查明确的 `solution.py`，再由 `workspace.run_local_tests()` 启动 `_test_runner` 子进程。
 - runner 先用 AST 判断顶层 `run_cases()` 是否存在、是否为受支持的同步入口，以及是否仍为空实现；缺失入口不会为了检查而执行文件顶层代码。
-- 有效入口以非 `__main__` 名称加载，避免模板中的 main guard 与 CLI 重复调用；随后显式调用一次 `run_cases()`。
+- 有效入口使用静态检查时的同一份已解码源码快照，以非 `__main__` 名称执行，避免二次读取差异和模板 main guard 重复调用；随后显式调用一次 `run_cases()`。
 - 子进程 stdout、stderr 和内部退出码映射为不可变 `LocalTestResult`。CLI 安全显示外部文本，并把未配置、失败和默认 1 秒超时统一映射为退出码 1。
 - Doctor 使用同一 Session/solution 路径，默认只静态检查。
 - 提交只读取明确路径中的 marker 区域并使用同工作区 Session，不检查或执行 `run_cases()`。
@@ -136,7 +138,9 @@ service -> paths, auth, client, doctor, problem, ui, workspace, typer
 doctor -> auth, client result types, workspace
 auth -> browser_cookie3, safe_files
 workspace -> safe_files, _test_runner constants, subprocess, platform file opener
-_test_runner -> Python standard library
+workspace -> solution_source
+_test_runner -> solution_source, Python standard library
+solution_source -> Python standard library
 client -> httpx
 ui -> rich, doctor result types
 problem -> Python standard library
@@ -157,6 +161,7 @@ safe_files -> Python standard library
 7. Cookie 不得进入输出、异常、测试 fixture、提交或发布产物。
 8. 当前保持单文件、中文站、Python3 和同步实现，不借 v0.8 扩大产品范围。
 9. 本地自测是用户主动选择的代码执行；入口校验、一次调用、总超时和受控错误必须由 CLI 保证，远程提交不依赖本地自测。
+10. 用户解题文件只按 UTF-8/UTF-8 BOM 解码；编码不确定时拒绝，不通过猜测、替换或自动改写掩盖错误。
 
 ## 仍需演进的边界
 

@@ -155,6 +155,14 @@ def diagnose_solution(path: Path, *, run_solution: bool = False) -> DoctorCheck:
                 suggestion="请检查文件权限",
             )
 
+        case SolutionFileStatus.INVALID_ENCODING:
+            return DoctorCheck(
+                name=SOLUTION_CHECK_NAME,
+                status=DoctorStatus.FAIL,
+                message=inspection.detail,
+                suggestion="请使用编辑器将 solution.py 转换为 UTF-8 编码",
+            )
+
         case SolutionFileStatus.INVALID_SYNTAX:
             line = (
                 f"第 {inspection.syntax_line} 行"

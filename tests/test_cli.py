@@ -263,6 +263,28 @@ def test_test_command_reports_syntax_line_without_running(monkeypatch) -> None:
     assert "第 7 行" in result.output
 
 
+def test_test_command_rejects_invalid_encoding_without_running(
+    configured_app_paths,
+    monkeypatch,
+) -> None:
+    solution_file = configured_app_paths.solution_file
+    solution_file.parent.mkdir(parents=True)
+    solution_file.write_bytes(b"\xff\xfeinvalid source")
+    monkeypatch.setattr(
+        cli,
+        "run_local_tests",
+        lambda path, *, timeout: (_ for _ in ()).throw(
+            AssertionError("invalid source must not run")
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["test"])
+
+    assert result.exit_code == 1
+    assert "不是有效的 UTF-8 编码" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_test_command_reports_unconfigured_local_tests(monkeypatch) -> None:
     monkeypatch.setattr(
         cli,
@@ -391,3 +413,30 @@ def test_submit_does_not_run_local_tests(monkeypatch) -> None:
     result = runner.invoke(cli.app, ["submit"])
 
     assert result.exit_code == 0
+
+
+def test_submit_rejects_invalid_encoding_before_remote_request(
+    configured_app_paths,
+    monkeypatch,
+) -> None:
+    solution_file = configured_app_paths.solution_file
+    solution_file.parent.mkdir(parents=True)
+    solution_file.write_bytes(b"\xff\xfeinvalid source")
+    monkeypatch.setattr(
+        "leetcode_local_cli.service.LeetCodeClient",
+        lambda cookies: (_ for _ in ()).throw(
+            AssertionError("invalid source must not reach remote client")
+        ),
+    )
+    monkeypatch.setattr(
+        "leetcode_local_cli.service._load_cookies_from_session",
+        lambda paths: (_ for _ in ()).throw(
+            AssertionError("invalid source must not load credentials")
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["submit"])
+
+    assert result.exit_code == 1
+    assert "不是有效的 UTF-8 编码" in result.output
+    assert "Traceback" not in result.output

@@ -290,6 +290,9 @@ def test(
         case SolutionFileStatus.READ_ERROR:
             error("无法读取 solution.py，请检查文件权限")
             raise Exit(1)
+        case SolutionFileStatus.INVALID_ENCODING:
+            error(inspection.detail)
+            raise Exit(1)
         case SolutionFileStatus.INVALID_SYNTAX:
             line = (
                 f"第 {inspection.syntax_line} 行"
