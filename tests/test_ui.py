@@ -181,7 +181,7 @@ def test_terminal_control_characters_are_removed_from_rendered_output(
     assert "forged" in rendered or "click" in rendered
 
 
-def test_local_execution_return_value_uses_white_style(monkeypatch) -> None:
+def test_local_execution_return_value_uses_emphasized_white_style(monkeypatch) -> None:
     styles: list[str] = []
     original = ui._external_text
 
@@ -199,7 +199,7 @@ def test_local_execution_return_value_uses_white_style(monkeypatch) -> None:
         arguments_after_text=None,
     )
 
-    assert "white" in styles
+    assert "bold bright_white" in styles
 
 
 def test_external_markup_remains_readable_without_color(monkeypatch) -> None:

@@ -116,7 +116,7 @@ def render_local_execution_result(
         warning("标准错误：")
         render_local_test_output(stderr)
     info("返回值：")
-    render_local_test_output(result_text, style="white")
+    render_local_test_output(result_text, style="bold bright_white")
     if arguments_after_text is not None:
         info("调用后参数：")
         render_local_test_output(arguments_after_text)
