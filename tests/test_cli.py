@@ -4,23 +4,38 @@ from pathlib import Path
 import subprocess
 import sys
 from types import SimpleNamespace
+from contextlib import nullcontext
 
 import pytest
 from click import unstyle
 from typer.testing import CliRunner
 
 from leetcode_local_cli import cli
+from leetcode_local_cli.browser import BrowserDevToolsEndpoint, BrowserKind
+from leetcode_local_cli.commands import account as account_commands
+from leetcode_local_cli.commands import common as command_common
+from leetcode_local_cli.commands import problems as problem_commands
+from leetcode_local_cli.commands import setup as setup_commands
+from leetcode_local_cli.commands import submission as submission_commands
+from leetcode_local_cli.commands import testing as testing_commands
 from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
 from leetcode_local_cli.problem import ProblemDetail
 from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.use_cases import local_test as local_test_use_case
+from leetcode_local_cli.use_cases import login as login_use_case
+from leetcode_local_cli.use_cases.common import UseCaseError
 from leetcode_local_cli.workspace import (
     SolutionFileInspection,
     SolutionFileStatus,
-    WorkspaceError,
 )
 
 
 runner = CliRunner()
+login_reporter = login_use_case.LoginReporter(
+    info=lambda message: None,
+    warning=lambda message: None,
+    loading=lambda message: nullcontext(),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +44,7 @@ def configured_app_paths(tmp_path, monkeypatch) -> AppPaths:
         tmp_path / "workspace",
         user_config_file=tmp_path / "config.toml",
     )
-    monkeypatch.setattr(cli, "_require_app_paths", lambda: paths)
+    monkeypatch.setattr(command_common, "require_app_paths", lambda: paths)
     return paths
 
 
@@ -77,7 +92,9 @@ def test_init_explicit_path_yes_creates_and_configures_workspace(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     user_config_file = tmp_path / "config" / "config.toml"
-    monkeypatch.setattr(cli, "get_user_config_file", lambda: user_config_file)
+    monkeypatch.setattr(
+        setup_commands, "get_user_config_file", lambda: user_config_file
+    )
 
     result = runner.invoke(cli.app, ["init", str(workspace_root), "--yes"])
 
@@ -92,7 +109,9 @@ def test_init_without_path_appends_fixed_workspace_directory(
     monkeypatch,
 ) -> None:
     user_config_file = tmp_path / "config" / "config.toml"
-    monkeypatch.setattr(cli, "get_user_config_file", lambda: user_config_file)
+    monkeypatch.setattr(
+        setup_commands, "get_user_config_file", lambda: user_config_file
+    )
 
     result = runner.invoke(cli.app, ["init"], input=f"{tmp_path}\ny\n")
 
@@ -108,7 +127,9 @@ def test_init_preserves_existing_regular_solution(tmp_path, monkeypatch) -> None
     solution_file = workspace_root / "solution.py"
     solution_file.write_text("existing solution", encoding="utf-8")
     user_config_file = tmp_path / "config" / "config.toml"
-    monkeypatch.setattr(cli, "get_user_config_file", lambda: user_config_file)
+    monkeypatch.setattr(
+        setup_commands, "get_user_config_file", lambda: user_config_file
+    )
 
     result = runner.invoke(cli.app, ["init", str(workspace_root), "--yes"])
 
@@ -122,7 +143,9 @@ def test_init_without_path_reuses_valid_default_workspace(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     user_config_file = tmp_path / "config" / "config.toml"
-    monkeypatch.setattr(cli, "get_user_config_file", lambda: user_config_file)
+    monkeypatch.setattr(
+        setup_commands, "get_user_config_file", lambda: user_config_file
+    )
     first_result = runner.invoke(
         cli.app,
         ["init", str(workspace_root), "--yes"],
@@ -138,7 +161,7 @@ def test_init_without_path_reuses_valid_default_workspace(
 
 def test_init_yes_requires_explicit_path(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
-        cli,
+        setup_commands,
         "get_user_config_file",
         lambda: tmp_path / "missing" / "config.toml",
     )
@@ -154,11 +177,11 @@ def test_doctor_command_renders_successful_report(monkeypatch) -> None:
     rendered = []
     received = []
     monkeypatch.setattr(
-        cli,
+        testing_commands,
         "get_doctor_report",
         lambda paths, *, run_solution=False: received.append(run_solution) or report,
     )
-    monkeypatch.setattr(cli, "render_doctor_report", rendered.append)
+    monkeypatch.setattr(testing_commands, "render_doctor_report", rendered.append)
 
     result = runner.invoke(cli.app, ["doctor"])
 
@@ -171,11 +194,11 @@ def test_doctor_command_forwards_run_solution_option(monkeypatch) -> None:
     report = DoctorReport(checks=(DoctorCheck("solution", DoctorStatus.PASS, "ok"),))
     received = []
     monkeypatch.setattr(
-        cli,
+        testing_commands,
         "get_doctor_report",
         lambda paths, *, run_solution=False: received.append(run_solution) or report,
     )
-    monkeypatch.setattr(cli, "render_doctor_report", lambda report: None)
+    monkeypatch.setattr(testing_commands, "render_doctor_report", lambda report: None)
 
     result = runner.invoke(cli.app, ["doctor", "--run-solution"])
 
@@ -186,11 +209,11 @@ def test_doctor_command_forwards_run_solution_option(monkeypatch) -> None:
 def test_doctor_command_exits_nonzero_for_failed_report(monkeypatch) -> None:
     report = DoctorReport(checks=(DoctorCheck("session", DoctorStatus.FAIL, "failed"),))
     monkeypatch.setattr(
-        cli,
+        testing_commands,
         "get_doctor_report",
         lambda paths, *, run_solution=False: report,
     )
-    monkeypatch.setattr(cli, "render_doctor_report", lambda report: None)
+    monkeypatch.setattr(testing_commands, "render_doctor_report", lambda report: None)
 
     result = runner.invoke(cli.app, ["doctor"])
 
@@ -221,19 +244,21 @@ def test_login_uses_explicit_chrome_devtools_port_without_manual_fallback(
 
     validated = []
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "validate_devtools_browser",
         lambda port, browser: validated.append((port, browser)),
     )
-    monkeypatch.setattr(cli, "get_cookies_from_devtools", lambda port: cookies)
     monkeypatch.setattr(
-        cli,
+        login_use_case, "get_cookies_from_devtools", lambda port: cookies
+    )
+    monkeypatch.setattr(
+        account_commands,
         "get_cookies_from_input",
         lambda: pytest.fail("manual Cookie input must not run"),
     )
-    monkeypatch.setattr(cli, "LeetCodeClient", SignedInClient)
+    monkeypatch.setattr(login_use_case, "LeetCodeClient", SignedInClient)
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "save_session",
         lambda session, path: saved_sessions.append((session, path)),
     )
@@ -244,7 +269,7 @@ def test_login_uses_explicit_chrome_devtools_port_without_manual_fallback(
     )
 
     assert result.exit_code == 0, result.output
-    assert validated == [(9222, cli.BrowserKind.CHROME)]
+    assert validated == [(9222, BrowserKind.CHROME)]
     assert saved_sessions == [
         (
             {
@@ -261,12 +286,12 @@ def test_login_uses_explicit_chrome_devtools_port_without_manual_fallback(
 def test_login_auto_stops_after_chrome_success(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "_try_authorized_browser_login",
-        lambda browser, session_file: calls.append(browser) or True,
+        lambda browser, session_file, *, reporter: calls.append(browser) or True,
     )
     monkeypatch.setattr(
-        cli,
+        account_commands,
         "_login_manually",
         lambda session_file: pytest.fail("manual login must not run"),
     )
@@ -274,20 +299,20 @@ def test_login_auto_stops_after_chrome_success(monkeypatch) -> None:
     result = runner.invoke(cli.app, ["login"])
 
     assert result.exit_code == 0, result.output
-    assert calls == [cli.BrowserKind.CHROME]
+    assert calls == [BrowserKind.CHROME]
 
 
 def test_login_auto_falls_back_from_chrome_to_edge(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "_try_authorized_browser_login",
-        lambda browser, session_file: (
-            calls.append(browser) or browser is cli.BrowserKind.EDGE
+        lambda browser, session_file, *, reporter: (
+            calls.append(browser) or browser is BrowserKind.EDGE
         ),
     )
     monkeypatch.setattr(
-        cli,
+        account_commands,
         "_login_manually",
         lambda session_file: pytest.fail("manual login must not run"),
     )
@@ -295,7 +320,7 @@ def test_login_auto_falls_back_from_chrome_to_edge(monkeypatch) -> None:
     result = runner.invoke(cli.app, ["login"])
 
     assert result.exit_code == 0, result.output
-    assert calls == [cli.BrowserKind.CHROME, cli.BrowserKind.EDGE]
+    assert calls == [BrowserKind.CHROME, BrowserKind.EDGE]
 
 
 @pytest.mark.parametrize(
@@ -309,9 +334,9 @@ def test_login_explicit_browser_does_not_try_the_other_browser(
 ) -> None:
     calls = []
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "_try_authorized_browser_login",
-        lambda browser, session_file: calls.append(browser.value) or True,
+        lambda browser, session_file, *, reporter: calls.append(browser.value) or True,
     )
 
     result = runner.invoke(cli.app, ["login", "--browser", browser_name])
@@ -325,12 +350,12 @@ def test_login_auto_falls_back_to_manual_after_both_browsers_fail(
 ) -> None:
     calls = []
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "_try_authorized_browser_login",
-        lambda browser, path: False,
+        lambda browser, path, *, reporter: False,
     )
     monkeypatch.setattr(
-        cli,
+        account_commands,
         "_login_manually",
         lambda session_file: calls.append("manual"),
     )
@@ -343,8 +368,8 @@ def test_login_auto_falls_back_to_manual_after_both_browsers_fail(
 
 def test_login_devtools_port_requires_explicit_browser(monkeypatch) -> None:
     monkeypatch.setattr(
-        cli,
-        "_try_explicit_devtools_login",
+        account_commands,
+        "try_automatic_login",
         lambda *args, **kwargs: pytest.fail("ambiguous endpoint must not be used"),
     )
 
@@ -357,8 +382,8 @@ def test_login_devtools_port_requires_explicit_browser(monkeypatch) -> None:
 
 def test_login_rejects_removed_chrome_debug_port_alias(monkeypatch) -> None:
     monkeypatch.setattr(
-        cli,
-        "_try_explicit_devtools_login",
+        account_commands,
+        "try_automatic_login",
         lambda *args, **kwargs: pytest.fail("removed option must not be accepted"),
     )
 
@@ -374,8 +399,8 @@ def test_login_rejects_removed_chrome_debug_port_alias(monkeypatch) -> None:
 @pytest.mark.parametrize(
     ("browser", "prefixes", "source"),
     [
-        (cli.BrowserKind.CHROME, ("Chrome/",), "Chrome DevTools"),
-        (cli.BrowserKind.EDGE, ("Edg/",), "Edge DevTools"),
+        (BrowserKind.CHROME, ("Chrome/",), "Chrome DevTools"),
+        (BrowserKind.EDGE, ("Edg/",), "Edge DevTools"),
     ],
 )
 def test_authorized_browser_login_uses_existing_authorization_without_opening_pages(
@@ -386,36 +411,43 @@ def test_authorized_browser_login_uses_existing_authorization_without_opening_pa
 ) -> None:
     cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
     events = []
-    endpoint = cli.BrowserDevToolsEndpoint(
+    endpoint = BrowserDevToolsEndpoint(
         port=53127,
         debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "read_browser_devtools_endpoint",
         lambda received_browser: endpoint,
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "get_cookies_from_browser_endpoint",
         lambda url, **kwargs: events.append(("connect", url, kwargs)) or cookies,
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "open_browser_authorization_pages",
         lambda received_browser: pytest.fail(
             "authorized browser must not open another page"
         ),
     )
     monkeypatch.setattr(
-        cli,
-        "_validate_and_save_login",
+        login_use_case,
+        "validate_and_save_login",
         lambda received, **kwargs: (
             events.append(("save", received, kwargs["source"])) or True
         ),
     )
 
-    assert cli._try_authorized_browser_login(browser, Path("session.json")) is True
+    assert (
+        login_use_case._try_authorized_browser_login(
+            browser,
+            Path("session.json"),
+            reporter=login_reporter,
+        )
+        is True
+    )
     assert events == [
         (
             "connect",
@@ -423,14 +455,14 @@ def test_authorized_browser_login_uses_existing_authorization_without_opening_pa
             {
                 "expected_port": endpoint.port,
                 "expected_browser_prefixes": prefixes,
-                "timeout_seconds": cli.BROWSER_LOGIN_TIMEOUT_SECONDS,
+                "timeout_seconds": login_use_case.BROWSER_LOGIN_TIMEOUT_SECONDS,
             },
         ),
         ("save", cookies, source),
     ]
 
 
-@pytest.mark.parametrize("browser", [cli.BrowserKind.CHROME, cli.BrowserKind.EDGE])
+@pytest.mark.parametrize("browser", [BrowserKind.CHROME, BrowserKind.EDGE])
 def test_authorized_browser_login_opens_pages_when_permission_is_missing(
     browser,
     monkeypatch,
@@ -438,57 +470,67 @@ def test_authorized_browser_login_opens_pages_when_permission_is_missing(
     cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
     events = []
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "read_browser_devtools_endpoint",
         lambda received_browser: (_ for _ in ()).throw(
-            cli.BrowserAuthorizationPending("browser 尚未授权")
+            login_use_case.BrowserAuthorizationPending("browser 尚未授权")
         ),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "open_browser_authorization_pages",
         lambda received_browser: events.append(("open", received_browser)),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "_wait_for_browser_cookies",
         lambda received_browser: cookies,
     )
-    monkeypatch.setattr(cli, "_validate_and_save_login", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        login_use_case, "validate_and_save_login", lambda *args, **kwargs: True
+    )
 
-    assert cli._try_authorized_browser_login(browser, Path("session.json")) is True
+    assert (
+        login_use_case._try_authorized_browser_login(
+            browser,
+            Path("session.json"),
+            reporter=login_reporter,
+        )
+        is True
+    )
     assert events == [("open", browser)]
 
 
 def test_authorized_browser_login_does_not_reopen_for_generic_endpoint_failure(
     monkeypatch,
 ) -> None:
-    endpoint = cli.BrowserDevToolsEndpoint(
+    endpoint = BrowserDevToolsEndpoint(
         port=53127,
         debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "read_browser_devtools_endpoint",
         lambda browser: endpoint,
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "open_browser_authorization_pages",
         lambda browser: pytest.fail("generic failures must not open more pages"),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "get_cookies_from_browser_endpoint",
         lambda *args, **kwargs: (_ for _ in ()).throw(
-            cli.DevToolsError("stale endpoint")
+            login_use_case.DevToolsError("stale endpoint")
         ),
     )
 
     assert (
-        cli._try_authorized_browser_login(
-            cli.BrowserKind.CHROME,
+        login_use_case._try_authorized_browser_login(
+            BrowserKind.CHROME,
             Path("session.json"),
+            reporter=login_reporter,
         )
         is False
     )
@@ -499,56 +541,59 @@ def test_chrome_login_starts_browser_when_saved_endpoint_is_unreachable(
 ) -> None:
     cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
     events = []
-    endpoint = cli.BrowserDevToolsEndpoint(
+    endpoint = BrowserDevToolsEndpoint(
         port=53127,
         debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "read_browser_devtools_endpoint",
         lambda browser: endpoint,
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "get_cookies_from_browser_endpoint",
         lambda *args, **kwargs: (_ for _ in ()).throw(
-            cli.DevToolsConnectionUnavailable("browser is not running")
+            login_use_case.DevToolsConnectionUnavailable("browser is not running")
         ),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "open_browser_authorization_pages",
         lambda browser: events.append(("open", browser)),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "sleep",
         lambda seconds: events.append(("sleep", seconds)),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "_wait_for_browser_cookies",
         lambda browser: events.append(("wait", browser)) or cookies,
     )
-    monkeypatch.setattr(cli, "_validate_and_save_login", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        login_use_case, "validate_and_save_login", lambda *args, **kwargs: True
+    )
 
     assert (
-        cli._try_authorized_browser_login(
-            cli.BrowserKind.CHROME,
+        login_use_case._try_authorized_browser_login(
+            BrowserKind.CHROME,
             Path("session.json"),
+            reporter=login_reporter,
         )
         is True
     )
     assert events == [
-        ("open", cli.BrowserKind.CHROME),
-        ("sleep", cli.BROWSER_WINDOW_READY_DELAY_SECONDS),
-        ("wait", cli.BrowserKind.CHROME),
+        ("open", BrowserKind.CHROME),
+        ("sleep", login_use_case.BROWSER_WINDOW_READY_DELAY_SECONDS),
+        ("wait", BrowserKind.CHROME),
     ]
 
 
 def test_wait_for_browser_cookies_retries_while_browser_starts(monkeypatch) -> None:
     cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
-    endpoint = cli.BrowserDevToolsEndpoint(
+    endpoint = BrowserDevToolsEndpoint(
         port=53127,
         debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
     )
@@ -557,65 +602,74 @@ def test_wait_for_browser_cookies_retries_while_browser_starts(monkeypatch) -> N
     def read_cookies(browser, received_endpoint, *, timeout_seconds):
         attempts.append((browser, received_endpoint, timeout_seconds))
         if len(attempts) == 1:
-            raise cli.DevToolsConnectionUnavailable("browser is starting")
+            raise login_use_case.DevToolsConnectionUnavailable("browser is starting")
         return cookies
 
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "read_browser_devtools_endpoint",
         lambda browser: endpoint,
     )
-    monkeypatch.setattr(cli, "_read_browser_login_cookies", read_cookies)
-    monkeypatch.setattr(cli, "sleep", lambda seconds: None)
+    monkeypatch.setattr(login_use_case, "_read_browser_login_cookies", read_cookies)
+    monkeypatch.setattr(login_use_case, "sleep", lambda seconds: None)
 
-    assert cli._wait_for_browser_cookies(cli.BrowserKind.CHROME) == cookies
+    assert login_use_case._wait_for_browser_cookies(BrowserKind.CHROME) == cookies
     assert len(attempts) == 2
 
 
-@pytest.mark.parametrize("browser", [cli.BrowserKind.CHROME, cli.BrowserKind.EDGE])
+@pytest.mark.parametrize("browser", [BrowserKind.CHROME, BrowserKind.EDGE])
 def test_authorized_browser_login_opens_visible_window_and_retries_after_rejection(
     browser,
     monkeypatch,
 ) -> None:
     cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
     events = []
-    endpoint = cli.BrowserDevToolsEndpoint(
+    endpoint = BrowserDevToolsEndpoint(
         port=53127,
         debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "read_browser_devtools_endpoint",
         lambda received_browser: endpoint,
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "get_cookies_from_browser_endpoint",
         lambda *args, **kwargs: (_ for _ in ()).throw(
-            cli.DevToolsApprovalRejected("approval rejected")
+            login_use_case.DevToolsApprovalRejected("approval rejected")
         ),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "open_browser_authorization_pages",
         lambda received_browser: events.append(("open", received_browser)),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "sleep",
         lambda seconds: events.append(("sleep", seconds)),
     )
     monkeypatch.setattr(
-        cli,
+        login_use_case,
         "_wait_for_browser_cookies",
         lambda received_browser: events.append(("retry", received_browser)) or cookies,
     )
-    monkeypatch.setattr(cli, "_validate_and_save_login", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        login_use_case, "validate_and_save_login", lambda *args, **kwargs: True
+    )
 
-    assert cli._try_authorized_browser_login(browser, Path("session.json")) is True
+    assert (
+        login_use_case._try_authorized_browser_login(
+            browser,
+            Path("session.json"),
+            reporter=login_reporter,
+        )
+        is True
+    )
     assert events == [
         ("open", browser),
-        ("sleep", cli.BROWSER_WINDOW_READY_DELAY_SECONDS),
+        ("sleep", login_use_case.BROWSER_WINDOW_READY_DELAY_SECONDS),
         ("retry", browser),
     ]
 
@@ -632,16 +686,16 @@ def test_solve_command_reports_rejected_workspace_target(monkeypatch) -> None:
         python_code="class Solution:\n    pass",
     )
     monkeypatch.setattr(
-        cli,
+        problem_commands,
         "get_problem_detail_by_question_id",
-        lambda paths, question_id: problem,
+        lambda paths, question_id, *, progress: problem,
     )
-    monkeypatch.setattr(cli, "render_problem_detail", lambda problem: None)
+    monkeypatch.setattr(problem_commands, "render_problem_detail", lambda problem: None)
     monkeypatch.setattr(
-        cli,
-        "write_solution_file",
-        lambda path, python_code, metadata: (_ for _ in ()).throw(
-            WorkspaceError("solution.py 是符号链接或断链，已拒绝写入")
+        problem_commands,
+        "write_problem_solution",
+        lambda paths, problem: (_ for _ in ()).throw(
+            UseCaseError("solution.py 是符号链接或断链，已拒绝写入")
         ),
     )
 
@@ -656,12 +710,12 @@ def test_test_command_reports_missing_solution_without_starting_worker(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        cli,
+        local_test_use_case,
         "inspect_solution_file",
         lambda path: SolutionFileInspection(status=SolutionFileStatus.MISSING),
     )
     monkeypatch.setattr(
-        cli,
+        local_test_use_case,
         "LocalExecutionWorker",
         lambda *args, **kwargs: pytest.fail("worker must not start"),
     )
@@ -674,7 +728,7 @@ def test_test_command_reports_missing_solution_without_starting_worker(
 
 def test_test_command_reports_syntax_line_without_starting_worker(monkeypatch) -> None:
     monkeypatch.setattr(
-        cli,
+        local_test_use_case,
         "inspect_solution_file",
         lambda path: SolutionFileInspection(
             status=SolutionFileStatus.INVALID_SYNTAX,
@@ -696,7 +750,7 @@ def test_test_command_rejects_invalid_encoding_without_running(
     solution_file.parent.mkdir(parents=True)
     solution_file.write_bytes(b"\xff\xfeinvalid source")
     monkeypatch.setattr(
-        cli,
+        local_test_use_case,
         "LocalExecutionWorker",
         lambda *args, **kwargs: pytest.fail("worker must not start"),
     )
@@ -828,13 +882,15 @@ class Solution:
 
 def test_submit_does_not_start_local_execution_worker(monkeypatch) -> None:
     monkeypatch.setattr(
-        cli,
+        submission_commands,
         "submit_current_solution",
-        lambda paths: {"state": "SUCCESS", "status_msg": "Accepted"},
+        lambda paths, **kwargs: {"state": "SUCCESS", "status_msg": "Accepted"},
     )
-    monkeypatch.setattr(cli, "render_submission_result", lambda result: None)
     monkeypatch.setattr(
-        cli,
+        submission_commands, "render_submission_result", lambda result: None
+    )
+    monkeypatch.setattr(
+        local_test_use_case,
         "LocalExecutionWorker",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("submit must not execute local tests")
@@ -863,12 +919,12 @@ def test_submit_exit_code_reflects_final_judge_result(
 ) -> None:
     rendered_results = []
     monkeypatch.setattr(
-        cli,
+        submission_commands,
         "submit_current_solution",
-        lambda paths: submission_result,
+        lambda paths, **kwargs: submission_result,
     )
     monkeypatch.setattr(
-        cli,
+        submission_commands,
         "render_submission_result",
         rendered_results.append,
     )
@@ -887,13 +943,13 @@ def test_submit_rejects_invalid_encoding_before_remote_request(
     solution_file.parent.mkdir(parents=True)
     solution_file.write_bytes(b"\xff\xfeinvalid source")
     monkeypatch.setattr(
-        "leetcode_local_cli.service.LeetCodeClient",
+        "leetcode_local_cli.use_cases.submission.LeetCodeClient",
         lambda cookies: (_ for _ in ()).throw(
             AssertionError("invalid source must not reach remote client")
         ),
     )
     monkeypatch.setattr(
-        "leetcode_local_cli.service._load_cookies_from_session",
+        "leetcode_local_cli.use_cases.submission.load_cookies_from_session",
         lambda paths: (_ for _ in ()).throw(
             AssertionError("invalid source must not load credentials")
         ),

@@ -1,8 +1,8 @@
 # 项目状态
 
-最近更新：2026-08-01
+最近更新：2026-08-02
 
-当前版本：`v0.9.0`，已发布到 PyPI 和 GitHub Releases。
+当前已发布版本：`v0.9.0`，已发布到 PyPI 和 GitHub Releases。当前工作树包含尚未发布的 CLI 分层重构。
 
 这是维护者的第一事实入口。用户行为以 [README](../README.md) 和 [PRODUCT_BOUNDARIES](PRODUCT_BOUNDARIES.md) 为准；实现结构以 [ARCHITECTURE](ARCHITECTURE.md) 为准。
 
@@ -21,11 +21,12 @@
 - 本地调用：`lc test` 自动发现 `Solution` 首个公开方法，支持交互输入和 `--stdin` JSON Lines；每组默认超时 1 秒。
 - 编码边界：`solution.py` 只接受 UTF-8/UTF-8 BOM，非法编码受控失败。
 - 提交：当前只支持 Python3；只有明确 `Accepted` 返回退出码 0。
+- 应用边界：CLI 命令适配器已集中到 `commands/`，可复用流程已迁移到不依赖 Typer/Rich 的 `use_cases/`。
 - 发布：标签触发三平台检查、PyPI Trusted Publisher 和 GitHub Release。
 
 ## 当前架构阶段
 
-项目是同步 Python CLI。路径、配置、安全文件操作、浏览器发现、本地 worker 和 HTTP 客户端已有独立边界；`service.py` 仍直接依赖 Typer/Rich，部分成功结果仍是裸字典，尚未形成稳定 Python API。
+项目是同步 Python CLI。`cli.py` 只创建应用并注册命令；`commands/` 负责参数、交互、渲染和退出码；`use_cases/` 负责编排认证、题目、诊断、本地测试和提交流程，且不依赖 Typer、Rich 或 `ui.py`。路径、配置、安全文件操作、浏览器发现、本地 worker 和 HTTP 客户端继续作为底层能力模块。当前尚未形成稳定 Python API。
 
 ## 当前问题
 
@@ -33,7 +34,7 @@
 2. **明文 Session**：Cookie 位于工作区 `.leetcode_local_cli/session.json`，存在误提交、同步或共享风险。
 3. **工作区标记**：Git 仓库中的 `.leetcode-local-cli.toml` 是否提交或忽略尚未形成统一语义。
 4. **日常 CI**：普通 push/PR 尚无常规工作流，主要门禁仍集中在发布标签。
-5. **核心耦合**：业务层仍含 CLI/UI 依赖，公开模型和异常边界未稳定。
+5. **公开模型**：部分账号与提交结果仍使用裸字典；用例层已建立错误边界，但稳定 Python API 尚未设计。
 
 低优先级问题：系统 `.py` 关联可能不是编辑器；Broken Pipe、极端分页和正式 Python 小版本范围尚未收口。
 
@@ -42,10 +43,10 @@
 1. 将提交轮询改为基于单调时钟的总超时，并测试终态、超时和接口异常。
 2. 确认工作区标记的 Git 语义；不允许 CLI 未经确认修改用户仓库 `.gitignore`。
 3. 为普通 push/PR 增加 Ruff、Pyright 和 pytest。
-4. 再逐步解耦核心层、引入结构化模型和项目异常。
+4. 将剩余裸字典逐步迁移为结构化模型，再以真实消费者需求确定最小 Python API。
 
 更远方向只见 [PROJECT_DESIGN](PROJECT_DESIGN.md)，不视为承诺或排期。
 
 ## 最近验证
 
-`v0.9.0` 发布前通过 Ruff、Pyright、Windows 完整测试（288 passed、13 skipped）、wheel/sdist 构建和 CLI smoke test。Chrome 与 Edge 均完成一次维护者明确授权的真实登录验收；真实凭据未进入测试、终端报告或仓库。
+当前结构重构通过 Ruff format、Ruff lint、Pyright、Windows 完整测试（289 passed、13 skipped）、wheel/sdist 构建、全部子命令帮助检查和隔离 wheel smoke test。未重复执行真实浏览器登录或远程提交；`v0.9.0` 发布前的 Chrome/Edge 真实登录验收仍是最近一次外部集成证据。真实凭据未进入测试、终端报告或仓库。

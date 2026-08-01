@@ -1,27 +1,28 @@
 # 当前架构
 
-最近更新：2026-08-01
+最近更新：2026-08-02
 
-本文只描述 `v0.9.0` 已存在的结构。未来方向见 [PROJECT_DESIGN](PROJECT_DESIGN.md)。
+本文描述当前工作树的真实结构；其中 CLI 分层重构尚未发布。未来方向见 [PROJECT_DESIGN](PROJECT_DESIGN.md)。
 
 ## 总览
 
-项目是同步 Python CLI。Typer 负责入口，Rich 负责展示；业务命令先解析默认工作区为不可变 `AppPaths`，再把明确路径传入认证、题目、文件、测试和提交链路。工具安装目录与用户数据位置无关。
+项目是同步 Python CLI。Typer 负责入口，Rich 负责展示；命令适配器先解析默认工作区为不可变 `AppPaths`，再调用不依赖 CLI 框架的应用用例。用例把明确路径传入认证、题目、文件、测试和提交能力。工具安装目录与用户数据位置无关。
 
 ```mermaid
 flowchart LR
-    U["用户 / 安装器"] --> CLI["cli：命令与退出码"]
-    CLI --> CFG["config + paths"]
+    U["用户 / 安装器"] --> CLI["cli：应用创建与命令注册"]
+    CLI --> CMD["commands：参数、交互、渲染与退出码"]
+    CMD --> CFG["config + paths"]
     CFG --> UC["用户 config.toml"]
     CFG --> WC["工作区标记"]
-    CLI --> SVC["service：流程编排"]
-    CLI --> AUTH["auth + browser"]
-    SVC --> CLIENT["client：LeetCode CN"]
-    SVC --> WS["workspace"]
+    CMD --> APP["use_cases：应用流程编排"]
+    CMD --> UI["ui：Rich 渲染"]
+    APP --> AUTH["auth + browser"]
+    APP --> CLIENT["client：LeetCode CN"]
+    APP --> WS["workspace"]
     WS --> SOL["solution.py"]
     WS --> RUN["独立 test worker"]
     AUTH --> SESSION["session.json"]
-    CLI --> UI["ui：Rich 渲染"]
 ```
 
 ## 目录与运行上下文
@@ -50,7 +51,9 @@ CLI → resolve_app_paths() → 验证用户配置和工作区标记
 
 | 模块 | 职责 | 关键边界 |
 | --- | --- | --- |
-| `cli.py` | 命令、参数、交互、错误文案和退出码 | 不应承载核心规则 |
+| `cli.py` | 创建 Typer 应用、全局版本选项和命令注册 | 不承载具体命令或业务流程 |
+| `commands/` | CLI 参数、终端交互、Rich 渲染和退出码 | 作为适配器调用用例；不承载可复用业务规则 |
+| `use_cases/` | 账号、登录、题目、诊断、本地测试和提交编排 | 不依赖 Typer、Rich 或 `ui.py` |
 | `paths.py` / `config.py` | 跨平台配置位置、`AppPaths`、TOML 和初始化 | 配置损坏时拒绝覆盖 |
 | `safe_files.py` | 普通目标校验、排他创建和原子替换 | 不理解业务；拒绝链接/reparse |
 | `browser.py` | Chrome/Edge 发现、授权等待和身份检查 | 不读取 Cookie、不关闭日常浏览器 |
@@ -62,7 +65,6 @@ CLI → resolve_app_paths() → 验证用户配置和工作区标记
 | `local_testing.py` | 安全参数解析和 JSON 行协议 | 不执行用户输入 |
 | `_test_runner.py` | 加载 `Solution`、发现入口、逐组调用 | 独立进程，不是安全沙箱 |
 | `doctor.py` | Session、工作区和远端诊断结果 | 默认不执行用户代码 |
-| `service.py` | 账号、题目、诊断和提交编排 | 仍耦合 Typer/Rich，待迁移 |
 | `ui.py` | 外部文本净化和 Rich 展示 | 不决定业务成功与否 |
 
 ## 核心数据流
@@ -86,15 +88,16 @@ CLI → resolve_app_paths() → 验证用户配置和工作区标记
 ## 依赖方向
 
 ```text
-cli → config/paths, browser/auth, service, workspace, ui
-service → auth, client, doctor, problem, workspace, ui
+cli → commands
+commands → use_cases, config/paths, local_testing, workspace, ui
+use_cases → auth, browser, client, config/paths, doctor, problem, workspace
 browser/auth/workspace/config → safe_files 或明确的底层原语
 workspace → local_testing, solution_source, _test_runner 子进程
 client → httpx
 ui → Rich
 ```
 
-`paths`、`safe_files` 和核心数据处理不得反向依赖 CLI/UI。核心层最终也应移除 `service.py` 中现存的 Typer/Rich 依赖。
+`use_cases`、`paths`、`safe_files` 和核心数据处理不得反向依赖 `commands`、`cli` 或 `ui`。需要展示进度或阶段性结果时，用例接收窄回调接口，由命令层注入 Rich 实现。
 
 ## 架构约束
 
@@ -109,7 +112,6 @@ ui → Rich
 
 ## 主要技术债
 
-- `service.py` 仍通过 `typer.Exit` 和 UI 函数表达业务错误。
 - 账号与提交等成功结果仍有裸字典。
 - Session 仍是明文 JSON。
 - 稳定 Python API 与站点适配器尚不存在。
