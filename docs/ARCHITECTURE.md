@@ -1,31 +1,20 @@
 # 当前架构
 
-最近更新：2026-08-02
-
-本文描述当前工作树的真实结构；其中 CLI 分层重构尚未发布。未来方向见 [PROJECT_DESIGN](PROJECT_DESIGN.md)。
-
-## 总览
-
-项目是同步 Python CLI。Typer 负责入口，Rich 负责展示；命令适配器先解析默认工作区为不可变 `AppPaths`，再调用不依赖 CLI 框架的应用用例。用例把明确路径传入认证、题目、文件、测试和提交能力。工具安装目录与用户数据位置无关。
+项目是同步 Python CLI。Typer 和 Rich 只属于终端适配层；应用用例复用明确的路径、认证、HTTP、工作区和本地 worker 能力。
 
 ```mermaid
 flowchart LR
-    U["用户 / 安装器"] --> CLI["cli：应用创建与命令注册"]
-    CLI --> CMD["commands：参数、交互、渲染与退出码"]
-    CMD --> CFG["config + paths"]
-    CFG --> UC["用户 config.toml"]
-    CFG --> WC["工作区标记"]
-    CMD --> APP["use_cases：应用流程编排"]
-    CMD --> UI["ui：Rich 渲染"]
-    APP --> AUTH["auth + browser"]
-    APP --> CLIENT["client：LeetCode CN"]
-    APP --> WS["workspace"]
-    WS --> SOL["solution.py"]
-    WS --> RUN["独立 test worker"]
-    AUTH --> SESSION["session.json"]
+    U["用户"] --> CLI["cli.py：应用与注册"]
+    CLI --> CMD["commands：参数、交互、渲染、退出码"]
+    CMD --> APP["use_cases：流程编排"]
+    CMD --> UI["ui：Rich"]
+    APP --> CORE["auth / browser / client / workspace / doctor / problem"]
+    CORE --> FS["config / session / solution.py"]
+    CORE --> LC["LeetCode CN"]
+    CORE --> RUN["独立 test worker"]
 ```
 
-## 目录与运行上下文
+## 运行上下文
 
 ```text
 用户配置目录/
@@ -33,85 +22,40 @@ flowchart LR
 
 默认工作区/
 ├── .leetcode-local-cli.toml   # 工作区版本、站点、语言
-├── solution.py                # 当前唯一解题文件
+├── solution.py                # 当前解题文件
 └── .leetcode_local_cli/
     └── session.json           # 当前阶段的明文 Session
 ```
 
-普通命令执行：
-
-```text
-CLI → resolve_app_paths() → 验证用户配置和工作区标记
-    → AppPaths → 显式传递 session_file / solution_file
-```
-
-`--help`、`--version` 和 `init` 不要求已有工作区。当前目录不决定业务文件位置。
+普通命令通过 `resolve_app_paths()` 得到不可变 `AppPaths`，再显式传递 `solution_file`、`session_file` 等路径。`--help`、`--version` 和 `init` 不要求已有工作区，当前目录不决定业务文件位置。
 
 ## 模块职责
 
-| 模块 | 职责 | 关键边界 |
-| --- | --- | --- |
-| `cli.py` | 创建 Typer 应用、全局版本选项和命令注册 | 不承载具体命令或业务流程 |
-| `commands/` | CLI 参数、终端交互、Rich 渲染和退出码 | 作为适配器调用用例；不承载可复用业务规则 |
-| `use_cases/` | 账号、登录、题目、诊断、本地测试和提交编排 | 不依赖 Typer、Rich 或 `ui.py` |
-| `paths.py` / `config.py` | 跨平台配置位置、`AppPaths`、TOML 和初始化 | 配置损坏时拒绝覆盖 |
-| `safe_files.py` | 普通目标校验、排他创建和原子替换 | 不理解业务；拒绝链接/reparse |
-| `browser.py` | Chrome/Edge 发现、授权等待和身份检查 | 不读取 Cookie、不关闭日常浏览器 |
-| `auth.py` | DevTools/手动 Cookie、在线验证和 Session | 只连接受限回环端点；不输出秘密 |
-| `client.py` | LeetCode CN HTTP、GraphQL、提交和判题 | 同步 httpx；当前固定 Python3 |
-| `problem.py` | 题号解析和题目模型 | 基本无 IO |
-| `workspace.py` | 模板、写入、静态检查、worker 生命周期和 marker | 路径必须显式传入 |
-| `solution_source.py` | UTF-8/UTF-8 BOM 读取边界 | 不猜测或改写编码 |
-| `local_testing.py` | 安全参数解析和 JSON 行协议 | 不执行用户输入 |
-| `_test_runner.py` | 加载 `Solution`、发现入口、逐组调用 | 独立进程，不是安全沙箱 |
-| `doctor.py` | Session、工作区和远端诊断结果 | 默认不执行用户代码 |
-| `ui.py` | 外部文本净化和 Rich 展示 | 不决定业务成功与否 |
+| 模块 | 职责 |
+| --- | --- |
+| `cli.py` | 创建 Typer 应用、全局回调和命令注册 |
+| `commands/` | CLI 参数、交互、Rich 渲染和退出码映射 |
+| `use_cases/` | 登录、账号、题目、诊断、本地测试和提交编排 |
+| `paths.py` / `config.py` | 跨平台路径、`AppPaths`、配置与工作区初始化 |
+| `safe_files.py` / `solution_source.py` | 安全目标、原子写入和 UTF-8 读取边界 |
+| `browser.py` / `auth.py` | 浏览器授权、Cookie 获取、验证与 Session |
+| `client.py` / `problem.py` | LeetCode CN HTTP 与题目模型 |
+| `workspace.py` / `local_testing.py` / `_test_runner.py` | 解法模板、参数协议和独立 worker |
+| `doctor.py` | 本地、Session 和远端诊断模型 |
+| `ui.py` | 外部文本净化与 Rich 展示 |
 
 ## 核心数据流
 
-### 初始化与写入
+- **初始化**：命令解析目标 → 配置用例验证并创建缺失文件 → 原子写入用户配置。重复初始化保留已有普通解法。
+- **登录**：Chrome → Edge → 手动 Cookie；浏览器授权只读取目标站点 Cookie，在线验证成功后才保存 Session。
+- **解题**：题号 → 在线题目模型 → 模板与 marker → 安全覆盖普通 `solution.py`。
+- **本地调用**：严格读取源码 → 启动 worker → 安全解析参数 → 每组新建 `Solution` 并限时调用 → Rich 或 JSON Lines 输出。
+- **提交**：读取 marker 区域 → 发送 Python3 代码 → 轮询结果 → CLI 映射展示和退出码；不会自动运行本地测试。
 
-`lc init` 验证已有配置和目标，创建缺失文件但保留已有普通 `solution.py`，最后原子写入用户配置；失败只清理本次创建内容。`lc solve` 是明确的切题操作，可以原子覆盖普通 `solution.py`。两条链路都拒绝符号链接、断链、目录、junction 和 reparse point。
+## 依赖约束
 
-### 登录
-
-默认顺序为 Chrome → Edge → 手动 Cookie。浏览器路径读取默认用户目录中的 `DevToolsActivePort`，必要时打开一个可见窗口等待用户授权，在 180 秒总预算内处理启动竞态。连接必须是身份匹配的本机回环端点；仅请求 `https://leetcode.cn/` 的 `LEETCODE_SESSION` 和 `csrftoken`，在线验证成功后才原子保存。CLI 不读取 Cookie 数据库，也不拥有或关闭日常浏览器。
-
-### 本地调用
-
-`lc test` 先按严格 UTF-8 边界读取文件，再启动持久 worker。worker 按定义顺序选择 `Solution` 第一个公开实例方法；CLI 将 `name = value` 限制为安全 Python 字面量并用 JSON 行协议传输。每组创建新 `Solution`，默认限时 1 秒；超时终止 worker，下一组重启。交互模式使用 Rich，`--stdin` 输出 JSON Lines。
-
-### 提交
-
-提交只读取 `solution.py` 的 marker 区域，不运行本地测试。客户端发送代码并轮询判题；UI 先展示结果，CLI 再映射退出码。只有明确 `Accepted` 为 0。当前轮询仍是固定次数，尚未形成稳定总超时。
-
-## 依赖方向
-
-```text
-cli → commands
-commands → use_cases, config/paths, local_testing, workspace, ui
-use_cases → auth, browser, client, config/paths, doctor, problem, workspace
-browser/auth/workspace/config → safe_files 或明确的底层原语
-workspace → local_testing, solution_source, _test_runner 子进程
-client → httpx
-ui → Rich
-```
-
-`use_cases`、`paths`、`safe_files` 和核心数据处理不得反向依赖 `commands`、`cli` 或 `ui`。需要展示进度或阶段性结果时，用例接收窄回调接口，由命令层注入 Rich 实现。
-
-## 架构约束
-
-- 路径由运行上下文提供；不得在导入时捕获 `Path.cwd()`。
-- 安装、用户配置、工作区和凭据是不同生命周期的资源。
-- 初始化幂等且非破坏；覆盖行为必须由明确业务命令触发。
-- 外部文本、配置、文件目标、浏览器端点和网络响应都不可信。
-- 文件写入使用同目录随机临时文件与原子替换。
-- 用户代码只在显式测试或 Doctor 执行模式运行；当前隔离不是沙箱。
-- Cookie 不进入日志、异常、fixture、报告或版本控制。
-- 当前保持中文站、Python3、单工作区、单解题文件和同步实现。
-
-## 主要技术债
-
-- 账号与提交等成功结果仍有裸字典。
-- Session 仍是明文 JSON。
-- 稳定 Python API 与站点适配器尚不存在。
+- 依赖只能从 `cli` 向 `commands`、`use_cases` 和底层模块流动，底层不得反向导入上层。
+- `use_cases/` 不依赖 Typer、Rich、`ui.py` 或具体终端；需要输出时接收窄回调。
+- 路径由运行上下文提供，不在导入时捕获 `Path.cwd()`。
+- 安装目录、用户配置、工作区和凭据属于不同生命周期。
+- 当前保持同步、中文站、Python3、单工作区和单解题文件，不因未来目标提前引入框架。

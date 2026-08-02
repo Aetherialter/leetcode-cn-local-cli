@@ -1,41 +1,27 @@
 # 产品边界
 
-最近更新：2026-08-01
-
-本文记录不得由某次实现偶然改变的用户行为。未列为“已确认”的语义必须先由维护者决定，再进入开发。
+以下行为不得由某次实现偶然改变；未确认的语义必须先由维护者决定。
 
 ## 已确认
 
-| ID | 边界 |
-| --- | --- |
-| PB-C01 | 当前是单个默认工作区、单个 `solution.py` 的在线优先工作流，不保存完整题库或每题目录。 |
-| PB-C02 | `lc solve` 表示切题，可不确认地覆盖普通 `solution.py`。 |
-| PB-C03 | 符号链接、断链、目录、目录链接、junction 和 reparse point 不是可写普通目标，必须拒绝。 |
-| PB-C04 | `solve` 后暂用系统默认关联打开 `.py`；以后可由明确编辑器配置替代。 |
-| PB-C05 | `lc doctor` 默认不执行用户代码；只有 `--run-solution` 才执行。 |
-| PB-C06 | 安装器缺少 uv 时只给官方安装说明，不下载或执行远端脚本。 |
-| PB-C07 | 当前不引入数据库、完整题面持久化或自动归档。 |
-| PB-C08 | 普通命令只使用用户配置中的默认工作区；当前没有全局 `--workspace`。 |
-| PB-C09 | `lc init` 无路径时输入父目录并追加 `leetcode-local-cli`；显式路径是完整目标；重复初始化保留已有普通解法并拒绝损坏配置。 |
-| PB-C10 | Session 暂存于工作区 `.leetcode_local_cli/session.json`；不迁移旧 Session，不得输出或提交该文件。 |
-| PB-C11 | `solution.py`、配置和 Session 采用安全目标检查与原子写入，失败不破坏旧文件。 |
-| PB-C12 | `lc test` 自动调用 `Solution` 首个公开方法；输入是安全字面量参数，不输入预期值。每组新实例、默认 1 秒；任一错误或无输入返回 1。`--stdin` 输出 JSON Lines。本地成功只代表调用正常结束，不代表算法正确。 |
-| PB-C13 | `solution.py` 只接受 UTF-8/UTF-8 BOM；非法编码不猜测、不改写、不执行、不提交。 |
-| PB-C14 | `lc submit` 只有明确 `Accepted` 返回 0；其他判题、未知结果、超时和运行错误返回 1；用法错误返回 2。 |
-| PB-C15 | `lc login` 默认 Chrome → Edge → 手动 Cookie。浏览器路径只使用用户明确授权、身份匹配的本机 DevTools，只取 `leetcode.cn` 所需 Cookie；不读 Cookie 数据库、不创建专用配置、不关闭日常浏览器。显式 `--browser` 不跨浏览器回退。 |
+- 当前采用单默认工作区、单个 `solution.py`、在线优先和 Python3 工作流，不保存完整题库或每题目录。
+- `lc solve` 表示切题，可以覆盖普通 `solution.py`；链接、目录、junction 和 reparse point 必须拒绝。
+- `lc init` 无路径时接收父目录并追加 `leetcode-local-cli`；显式路径是完整工作区；重复初始化保留已有普通解法。
+- 普通命令只使用配置中的默认工作区，当前没有全局 `--workspace`。
+- `solution.py` 只接受 UTF-8 或 UTF-8 BOM；其他编码不猜测、不改写、不执行也不提交。
+- `lc test` 自动调用 `Solution` 首个公开方法，只接收安全字面量参数并显示实际结果；每组默认 1 秒，无输入或任一错误返回 1，`--stdin` 使用 JSON Lines。成功只代表调用完成，不代表算法正确。
+- `lc doctor` 默认不执行用户代码，`lc submit` 也不执行本地代码；只有明确 `--run-solution` 才授权 Doctor 执行。
+- `lc submit` 只有明确 `Accepted` 返回 0，其他结果返回 1，用法错误返回 2。
+- `lc login` 默认 Chrome → Edge → 手动 Cookie；显式浏览器不跨浏览器回退。CLI 不读取 Cookie 数据库、不创建专用 profile、不关闭日常浏览器。
+- Session 当前保存在工作区 `.leetcode_local_cli/session.json`，不得输出、提交或迁移旧 Session。
 
 ## 待定
 
-| ID | 需要决定的问题 | 当前限制 |
-| --- | --- | --- |
-| PB-002 | `test --verbose` 与 `doctor --run-solution` 展示多少用户 traceback/stdout | 默认保持受控、简短输出 |
-| PB-004 | 提交前编译整个文件、只校验 marker，还是完全交给远端 | 不得隐式执行用户代码 |
-| PB-007 | 编辑器命令、配置层级和优先级 | 不得用 Shell 拼接用户命令 |
-| PB-010 | 合法空分页返回成功还是非零 | 必须区别负数和远端结构异常 |
-| PB-011 | Broken Pipe 是否视为正常结束 | 尚未统一 |
-| PB-012 | Python 支持到哪些实际 CI 覆盖的小版本 | 当前声明 `>=3.12` |
-| PB-013 | `.leetcode-local-cli.toml` 应提交、忽略还是迁移 | 未确认前不得自动修改用户 `.gitignore` |
+- `test --verbose` 和 `doctor --run-solution` 应展示多少 traceback/stdout。
+- 提交前校验整个文件、只校验 marker，还是完全交给远端。
+- 编辑器命令、配置层级和优先级。
+- 合法空分页与 Broken Pipe 的退出语义。
+- 实际支持并由 CI 覆盖的 Python 小版本范围。
+- `.leetcode-local-cli.toml` 应提交、忽略还是迁移。
 
-## 变更规则
-
-确认新边界时，更新本文件、用户 README、测试和状态；只有实际影响架构、安全或重大技术选择时，才同步相应专题文档。历史讨论由 Git 保存，不在当前文档重复堆积。
+确认边界变化时更新本文件、README 和对应测试；只有同时改变架构、风险或重大技术选择时，才更新相应专题文档。
