@@ -50,6 +50,7 @@ lc get 1
 lc solve 1
 lc test
 lc submit
+lc check <Submission ID>
 ```
 
 `lc solve` 会覆盖默认工作区中的普通 `solution.py`，切题前请自行保存解法。符号链接、目录、junction 和其他 reparse point 会被拒绝。
@@ -69,7 +70,8 @@ lc submit
 | `lc test [--timeout 秒数]` | 交互调用 `Solution` 的首个公开方法 |
 | `lc test --stdin` | JSON Lines 模式，适合 AI 或 CI |
 | `lc doctor [--run-solution]` | 检查工作区、Session 和网络；可选择执行解法 |
-| `lc submit` | 提交 marker 区域；仅 Accepted 返回退出码 0 |
+| `lc submit [--wait-timeout 秒数]` | 提交 marker 区域并限时等待判题；仅 Accepted 返回 0 |
+| `lc check <Submission ID>` | 查询一次已有提交的当前状态，不会重新提交代码 |
 
 ## 浏览器登录
 
@@ -99,13 +101,17 @@ CLI 不读取或解密浏览器 Cookie 数据库，不创建专用 profile，也
 printf 'nums = [3, 2, 4], target = 6\n' | lc test --stdin
 ```
 
+`lc submit` 取得 submission ID 后默认等待判题 30 秒。判题查询只在总预算内有限重试；初始提交 POST 不自动重试，避免重复提交。等待超时或查询失败时会保留 submission ID，并返回退出码 1。
+
+等待超时后可执行 `lc check <Submission ID>` 重新查询。该命令只请求一次：已经判题则展示结果，仍在判题则提示稍后重试；只有结果为 Accepted 时返回退出码 0。
+
 ## 安全与限制
 
 - 当前只支持 LeetCode 中文站和 Python3 提交。
 - Session 保存在工作区 `.leetcode_local_cli/session.json`，包含真实 Cookie，不得提交、上传、同步或共享。
 - `solution.py` 只接受 UTF-8 或 UTF-8 BOM。
 - `lc test` 与 `lc doctor --run-solution` 会执行本地代码，只能用于可信工作区。
-- `lc submit` 当前仍固定轮询判题，较慢时以 LeetCode 网站结果为准。
+- 判题等待超时不代表提交失败，应使用终端显示的 submission ID 到 LeetCode 查看最终结果。
 
 ## 维护者文档
 

@@ -39,7 +39,7 @@ flowchart LR
 | `paths.py` / `config.py` | 跨平台路径、`AppPaths`、配置与工作区初始化 |
 | `safe_files.py` / `solution_source.py` | 安全目标、原子写入和 UTF-8 读取边界 |
 | `browser.py` / `auth.py` | 浏览器授权、Cookie 获取、验证与 Session |
-| `client.py` / `problem.py` | LeetCode CN HTTP 与题目模型 |
+| `client.py` / `problem.py` / `submission.py` | LeetCode CN HTTP、题目模型和结构化提交结果 |
 | `workspace.py` / `local_testing.py` / `_test_runner.py` | 解法模板、参数协议和独立 worker |
 | `doctor.py` | 本地、Session 和远端诊断模型 |
 | `ui.py` | 外部文本净化与 Rich 展示 |
@@ -50,7 +50,7 @@ flowchart LR
 - **登录**：Chrome → Edge → 手动 Cookie；浏览器授权只读取目标站点 Cookie，在线验证成功后才保存 Session。
 - **解题**：题号 → 在线题目模型 → 模板与 marker → 安全覆盖普通 `solution.py`。
 - **本地调用**：严格读取源码 → 启动 worker → 安全解析参数 → 每组新建 `Solution` 并限时调用 → Rich 或 JSON Lines 输出。
-- **提交**：读取 marker 区域 → 发送 Python3 代码 → 轮询结果 → CLI 映射展示和退出码；不会自动运行本地测试。
+- **提交**：读取 marker → 发送 Python3 代码 → 获得 submission ID → 在单调时钟总预算内查询判题 → 返回终态、超时或轮询失败模型。初始 POST 不重试，安全的 GET 只做有限重试；`lc check` 则只查询一次已有 ID 并返回终态、仍在判题或查询失败。CLI 负责展示和退出码，不自动运行本地测试。
 
 ## 依赖约束
 

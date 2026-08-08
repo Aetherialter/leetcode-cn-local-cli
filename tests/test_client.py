@@ -7,6 +7,7 @@ from leetcode_local_cli.client import (
     ClientResult,
     LeetCodeClient,
 )
+from leetcode_local_cli.submission import SubmissionCheck
 
 
 def _client_with_transport(handler, cookies=None) -> LeetCodeClient:
@@ -52,6 +53,33 @@ def test_user_status_classifies_network_error() -> None:
         result = client.user_status()
 
     assert result.error is ClientErrorKind.NETWORK
+
+
+def test_user_status_classifies_timeout_separately() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow response", request=request)
+
+    with _client_with_transport(handler) as client:
+        result = client.user_status()
+
+    assert result.error is ClientErrorKind.TIMEOUT
+
+
+def test_http_error_preserves_status_and_retry_after() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            request=request,
+            headers={"Retry-After": "1.5"},
+            json={"error": "rate limited"},
+        )
+
+    with _client_with_transport(handler) as client:
+        result = client.user_status()
+
+    assert result.error is ClientErrorKind.HTTP
+    assert result.status_code == 429
+    assert result.retry_after_seconds == 1.5
 
 
 def test_user_status_returns_valid_status_object() -> None:
@@ -154,6 +182,60 @@ def test_submit_solution_rejects_missing_csrf_without_request() -> None:
 def test_submission_result_rejects_missing_state() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, request=request, json={"status_msg": "Accepted"})
+
+    with _client_with_transport(handler) as client:
+        result = client.get_submission_result(123)
+
+    assert result.error is ClientErrorKind.INVALID_RESPONSE
+
+
+def test_submission_result_returns_typed_check_and_forwards_timeout() -> None:
+    received_timeout = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received_timeout.append(request.extensions["timeout"]["read"])
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "state": "SUCCESS",
+                "status_msg": "Accepted",
+                "status_runtime": "4 ms",
+                "status_memory": "18.2 MB",
+                "memory": 18_200_000,
+                "total_correct": 63,
+                "total_testcases": 63,
+            },
+        )
+
+    with _client_with_transport(handler) as client:
+        result = client.get_submission_result(123, timeout=2.5)
+
+    assert received_timeout == [2.5]
+    assert result.data == SubmissionCheck(
+        state="SUCCESS",
+        status_message="Accepted",
+        runtime="4 ms",
+        memory="18.2 MB",
+        total_correct=63,
+        total_testcases=63,
+    )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"state": "SUCCESS", "status_msg": 1},
+        {"state": "SUCCESS", "status_runtime": []},
+        {"state": "SUCCESS", "status_memory": []},
+        {"state": "SUCCESS", "memory": {}},
+        {"state": "SUCCESS", "total_correct": True},
+        {"state": "SUCCESS", "total_testcases": "63"},
+    ],
+)
+def test_submission_result_rejects_invalid_optional_fields(payload) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, request=request, json=payload)
 
     with _client_with_transport(handler) as client:
         result = client.get_submission_result(123)

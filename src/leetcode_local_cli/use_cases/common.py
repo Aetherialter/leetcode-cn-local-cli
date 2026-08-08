@@ -37,6 +37,8 @@ def no_progress(message: str) -> AbstractContextManager[None]:
 
 def client_error_message(kind: ClientErrorKind | None) -> str:
     match kind:
+        case ClientErrorKind.TIMEOUT:
+            return "LeetCode 请求超时，请稍后重试"
         case ClientErrorKind.NETWORK:
             return "网络请求失败，请检查网络连接"
         case ClientErrorKind.HTTP:

@@ -11,7 +11,8 @@
 - `solution.py` 只接受 UTF-8 或 UTF-8 BOM；其他编码不猜测、不改写、不执行也不提交。
 - `lc test` 自动调用 `Solution` 首个公开方法，只接收安全字面量参数并显示实际结果；每组默认 1 秒，无输入或任一错误返回 1，`--stdin` 使用 JSON Lines。成功只代表调用完成，不代表算法正确。
 - `lc doctor` 默认不执行用户代码，`lc submit` 也不执行本地代码；只有明确 `--run-solution` 才授权 Doctor 执行。
-- `lc submit` 只有明确 `Accepted` 返回 0，其他结果返回 1，用法错误返回 2。
+- `lc submit` 取得 submission ID 后默认等待 30 秒，可用 `--wait-timeout` 调整。只有明确 `Accepted` 返回 0；其他判题、等待超时和轮询失败返回 1，用法错误返回 2。超时不代表代码未提交，必须保留 submission ID。
+- `lc check <Submission ID>` 只查询一次已有提交，不发送代码、不持续轮询；仍在判题、非 Accepted 或查询失败返回 1，Accepted 返回 0，用法错误返回 2。
 - `lc login` 默认 Chrome → Edge → 手动 Cookie；显式浏览器不跨浏览器回退。CLI 不读取 Cookie 数据库、不创建专用 profile、不关闭日常浏览器。
 - Session 当前保存在工作区 `.leetcode_local_cli/session.json`，不得输出、提交或迁移旧 Session。
 

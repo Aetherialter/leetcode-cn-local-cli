@@ -4,8 +4,15 @@ import pytest
 from rich.console import Console
 
 from leetcode_local_cli import ui
+from leetcode_local_cli.client import ClientErrorKind
 from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
 from leetcode_local_cli.problem import ProblemDetail, ProblemSummary
+from leetcode_local_cli.submission import (
+    SubmissionJudged,
+    SubmissionPending,
+    SubmissionPollingFailed,
+    SubmissionTimedOut,
+)
 from leetcode_local_cli.workspace import ProblemMetadata
 
 
@@ -60,6 +67,54 @@ def test_render_submission_target_includes_slug(monkeypatch) -> None:
     rendered = output.getvalue()
     assert "1. Two Sum" in rendered
     assert "two-sum" in rendered
+
+
+def test_render_submission_submitted_shows_id_and_wait_budget(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(ui, "console", Console(file=output, color_system=None))
+
+    ui.render_submission_submitted(123, wait_timeout_seconds=30)
+
+    rendered = output.getvalue()
+    assert "提交已发送：123" in rendered
+    assert "最多 30 秒" in rendered
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        SubmissionTimedOut(123, 30),
+        SubmissionPollingFailed(
+            123,
+            ClientErrorKind.NETWORK,
+            "网络请求失败",
+        ),
+    ],
+)
+def test_render_incomplete_submission_preserves_submission_id(
+    outcome,
+    monkeypatch,
+) -> None:
+    output = StringIO()
+    monkeypatch.setattr(ui, "console", Console(file=output, color_system=None))
+
+    ui.render_submission_result(outcome)
+
+    rendered = output.getvalue()
+    assert "Submission ID：123" in rendered
+    assert "代码已经" in rendered
+
+
+def test_render_pending_submission_shows_retry_command(monkeypatch) -> None:
+    output = StringIO()
+    monkeypatch.setattr(ui, "console", Console(file=output, color_system=None))
+
+    ui.render_submission_result(SubmissionPending(123))
+
+    rendered = output.getvalue()
+    assert "仍在判题中" in rendered
+    assert "Submission ID：123" in rendered
+    assert "lc check 123" in rendered
 
 
 @pytest.mark.parametrize(
@@ -154,11 +209,12 @@ def test_all_dynamic_renderers_treat_external_markup_as_plain_text(
         )
     )
     ui.render_submission_result(
-        {
-            "status_msg": MARKUP_PAYLOAD,
-            "status_runtime": MARKUP_PAYLOAD,
-            "memory": MARKUP_PAYLOAD,
-        }
+        SubmissionJudged(
+            submission_id=123,
+            status_message=MARKUP_PAYLOAD,
+            runtime=MARKUP_PAYLOAD,
+            memory=MARKUP_PAYLOAD,
+        )
     )
 
     rendered = output.getvalue()

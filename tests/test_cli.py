@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from leetcode_local_cli import cli
 from leetcode_local_cli.browser import BrowserDevToolsEndpoint, BrowserKind
+from leetcode_local_cli.client import ClientErrorKind
 from leetcode_local_cli.commands import account as account_commands
 from leetcode_local_cli.commands import common as command_common
 from leetcode_local_cli.commands import problems as problem_commands
@@ -21,6 +22,12 @@ from leetcode_local_cli.commands import testing as testing_commands
 from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
 from leetcode_local_cli.problem import ProblemDetail
 from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.submission import (
+    SubmissionJudged,
+    SubmissionPending,
+    SubmissionPollingFailed,
+    SubmissionTimedOut,
+)
 from leetcode_local_cli.use_cases import local_test as local_test_use_case
 from leetcode_local_cli.use_cases import login as login_use_case
 from leetcode_local_cli.use_cases.common import UseCaseError
@@ -884,7 +891,7 @@ def test_submit_does_not_start_local_execution_worker(monkeypatch) -> None:
     monkeypatch.setattr(
         submission_commands,
         "submit_current_solution",
-        lambda paths, **kwargs: {"state": "SUCCESS", "status_msg": "Accepted"},
+        lambda paths, **kwargs: SubmissionJudged(123, "Accepted"),
     )
     monkeypatch.setattr(
         submission_commands, "render_submission_result", lambda result: None
@@ -905,11 +912,18 @@ def test_submit_does_not_start_local_execution_worker(monkeypatch) -> None:
 @pytest.mark.parametrize(
     ("submission_result", "expected_exit_code"),
     (
-        ({"state": "SUCCESS", "status_msg": "Accepted"}, 0),
-        ({"state": "SUCCESS", "status_msg": "Wrong Answer"}, 1),
-        ({"state": "SUCCESS", "status_msg": "Time Limit Exceeded"}, 1),
-        ({"state": "SUCCESS"}, 1),
-        (None, 1),
+        (SubmissionJudged(123, "Accepted"), 0),
+        (SubmissionJudged(123, "Wrong Answer"), 1),
+        (SubmissionJudged(123, "Time Limit Exceeded"), 1),
+        (SubmissionTimedOut(123, 30), 1),
+        (
+            SubmissionPollingFailed(
+                123,
+                ClientErrorKind.NETWORK,
+                "网络请求失败",
+            ),
+            1,
+        ),
     ),
 )
 def test_submit_exit_code_reflects_final_judge_result(
@@ -933,6 +947,54 @@ def test_submit_exit_code_reflects_final_judge_result(
 
     assert result.exit_code == expected_exit_code
     assert rendered_results == [submission_result]
+
+
+@pytest.mark.parametrize("wait_timeout", ("0", "-1", "nan", "inf"))
+def test_submit_rejects_invalid_wait_timeout(wait_timeout: str) -> None:
+    result = runner.invoke(
+        cli.app,
+        ["submit", "--wait-timeout", wait_timeout],
+    )
+
+    assert result.exit_code == 2
+    assert "--wait-timeout" in result.output
+
+
+def test_submit_forwards_wait_timeout_and_renders_submission_id(monkeypatch) -> None:
+    received = []
+    submitted = []
+
+    def fake_submit(paths, **kwargs):
+        received.append(kwargs["wait_timeout_seconds"])
+        kwargs["on_submitted"](123)
+        return SubmissionJudged(123, "Accepted")
+
+    monkeypatch.setattr(
+        submission_commands,
+        "submit_current_solution",
+        fake_submit,
+    )
+    monkeypatch.setattr(
+        submission_commands,
+        "render_submission_submitted",
+        lambda submission_id, *, wait_timeout_seconds: submitted.append(
+            (submission_id, wait_timeout_seconds)
+        ),
+    )
+    monkeypatch.setattr(
+        submission_commands,
+        "render_submission_result",
+        lambda result: None,
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["submit", "--wait-timeout", "12.5"],
+    )
+
+    assert result.exit_code == 0
+    assert received == [12.5]
+    assert submitted == [(123, 12.5)]
 
 
 def test_submit_rejects_invalid_encoding_before_remote_request(
@@ -960,3 +1022,57 @@ def test_submit_rejects_invalid_encoding_before_remote_request(
     assert result.exit_code == 1
     assert "不是有效的 UTF-8 编码" in result.output
     assert "Traceback" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("submission_result", "expected_exit_code"),
+    (
+        (SubmissionJudged(123, "Accepted"), 0),
+        (SubmissionJudged(123, "Wrong Answer"), 1),
+        (SubmissionPending(123), 1),
+        (
+            SubmissionPollingFailed(
+                123,
+                ClientErrorKind.NETWORK,
+                "网络请求失败",
+            ),
+            1,
+        ),
+    ),
+)
+def test_check_exit_code_reflects_current_submission_result(
+    monkeypatch,
+    submission_result,
+    expected_exit_code: int,
+) -> None:
+    received_ids = []
+    rendered_results = []
+
+    def fake_check(paths, submission_id):
+        received_ids.append(submission_id)
+        return submission_result
+
+    monkeypatch.setattr(
+        submission_commands,
+        "check_existing_submission",
+        fake_check,
+    )
+    monkeypatch.setattr(
+        submission_commands,
+        "render_submission_result",
+        rendered_results.append,
+    )
+
+    result = runner.invoke(cli.app, ["check", "123"])
+
+    assert result.exit_code == expected_exit_code
+    assert received_ids == [123]
+    assert rendered_results == [submission_result]
+
+
+@pytest.mark.parametrize("submission_id", ("0", "-1", "not-an-id"))
+def test_check_rejects_invalid_submission_id(submission_id: str) -> None:
+    result = runner.invoke(cli.app, ["check", submission_id])
+
+    assert result.exit_code == 2
+    assert "submission" in result.output.lower()

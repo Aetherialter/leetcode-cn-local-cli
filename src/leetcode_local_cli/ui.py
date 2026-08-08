@@ -12,6 +12,12 @@ from rich.table import Table
 from rich.text import Text
 
 from leetcode_local_cli.doctor import DoctorReport, DoctorStatus
+from leetcode_local_cli.submission import (
+    SubmissionOutcome,
+    SubmissionPending,
+    SubmissionPollingFailed,
+    SubmissionTimedOut,
+)
 
 console = Console(
     width=shutil.get_terminal_size(fallback=(120, 24)).columns,
@@ -261,6 +267,15 @@ def render_submission_target(metadata: Any) -> None:
     )
 
 
+def render_submission_submitted(
+    submission_id: int,
+    *,
+    wait_timeout_seconds: float,
+) -> None:
+    info(f"提交已发送：{submission_id}")
+    info(f"正在等待判题，最多 {wait_timeout_seconds:g} 秒……")
+
+
 def render_doctor_report(report: DoctorReport) -> None:
     labels = {
         "session": "Session 文件",
@@ -298,25 +313,36 @@ def render_doctor_report(report: DoctorReport) -> None:
     )
 
 
-def render_submission_result(result: dict[str, Any] | None) -> None:
-    if result is None:
-        error("判题超时，请稍后到 LeetCode 查看结果")
+def render_submission_result(result: SubmissionOutcome) -> None:
+    if isinstance(result, SubmissionPending):
+        warning("提交仍在判题中")
+        info(f"Submission ID：{result.submission_id}")
+        info(f"可稍后重新执行：lc check {result.submission_id}")
+        return
+    if isinstance(result, SubmissionTimedOut):
+        error(f"判题等待超过 {result.waited_seconds:g} 秒")
+        warning("代码已经成功发送，可稍后重新查询")
+        info(f"Submission ID：{result.submission_id}")
+        info(f"重新查询：lc check {result.submission_id}")
+        return
+    if isinstance(result, SubmissionPollingFailed):
+        error(f"无法继续获取判题结果：{result.message}")
+        warning("代码已经提交，可稍后通过 Submission ID 查看")
+        info(f"Submission ID：{result.submission_id}")
         return
 
-    status_msg = str(result.get("status_msg") or "-")
-    runtime = str(result.get("status_runtime") or result.get("runtime") or "-")
-    memory = str(result.get("memory") or "-")
-    total_correct = result.get("total_correct")
-    total_testcases = result.get("total_testcases")
+    status_msg = result.status_message
+    runtime = result.runtime or "-"
+    memory = result.memory or "-"
+    total_correct = result.total_correct
+    total_testcases = result.total_testcases
 
-    if status_msg == "Accepted":
+    if result.accepted:
         success("通过")
     else:
         error(f"提交失败：{status_msg}")
 
-    table = Table(
-        title="判题结果", border_style="green" if status_msg == "Accepted" else "red"
-    )
+    table = Table(title="判题结果", border_style="green" if result.accepted else "red")
     table.add_column("Item", style="cyan", no_wrap=True)
     table.add_column("Value", style="white")
     table.add_row("Status", _external_text(status_msg))
@@ -328,7 +354,7 @@ def render_submission_result(result: dict[str, Any] | None) -> None:
     console.print(
         Panel(
             table,
-            border_style="green" if status_msg == "Accepted" else "red",
+            border_style="green" if result.accepted else "red",
             width=_terminal_width(),
         )
     )

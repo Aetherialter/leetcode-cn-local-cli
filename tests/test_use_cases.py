@@ -1,11 +1,19 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
 
-from leetcode_local_cli.client import ClientErrorKind, ClientResult
+from leetcode_local_cli.client import ClientErrorKind, ClientResult, LeetCodeClient
 from leetcode_local_cli.doctor import DoctorCheck, DoctorStatus
 from leetcode_local_cli.paths import AppPaths
 from leetcode_local_cli.problem import ParseQuestionIdResult
+from leetcode_local_cli.submission import (
+    SubmissionCheck,
+    SubmissionJudged,
+    SubmissionPending,
+    SubmissionPollingFailed,
+    SubmissionTimedOut,
+)
 from leetcode_local_cli.use_cases import (
     account,
     common,
@@ -26,6 +34,51 @@ class FakeClient:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         return None
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class PollClient:
+    def __init__(self, results: list[ClientResult]) -> None:
+        self.results = results
+        self.timeouts: list[float] = []
+
+    def get_submission_result(
+        self,
+        submission_id: int,
+        *,
+        timeout: float,
+    ) -> ClientResult:
+        assert submission_id == 123
+        self.timeouts.append(timeout)
+        return self.results.pop(0)
+
+
+def _poll(
+    results: list[ClientResult],
+    policy: submission.SubmissionPollingPolicy,
+) -> tuple[object, PollClient, FakeClock]:
+    client = PollClient(results)
+    clock = FakeClock()
+    outcome = submission._poll_submission(
+        cast(LeetCodeClient, client),
+        123,
+        policy,
+        clock=clock,
+        sleeper=clock.sleep,
+    )
+    return outcome, client, clock
 
 
 @pytest.fixture
@@ -170,9 +223,17 @@ def test_submit_current_solution_returns_result_and_reports_target(
             assert code == "class Solution:\n    pass"
             return ClientResult(data=123)
 
-        def get_submission_result(self, submission_id: int) -> ClientResult:
+        def get_submission_result(
+            self,
+            submission_id: int,
+            *,
+            timeout: float,
+        ) -> ClientResult:
             assert submission_id == 123
-            return ClientResult(data={"state": "SUCCESS", "status_msg": "Accepted"})
+            assert timeout == 10
+            return ClientResult(
+                data=SubmissionCheck(state="SUCCESS", status_message="Accepted")
+            )
 
     monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
     monkeypatch.setattr(submission, "LeetCodeClient", SubmitClient)
@@ -190,11 +251,306 @@ def test_submit_current_solution_returns_result_and_reports_target(
         ),
     )
     targets = []
+    submitted = []
 
-    result = submission.submit_current_solution(app_paths, on_target=targets.append)
+    result = submission.submit_current_solution(
+        app_paths,
+        on_target=targets.append,
+        on_submitted=submitted.append,
+    )
 
-    assert result == {"state": "SUCCESS", "status_msg": "Accepted"}
+    assert result == SubmissionJudged(submission_id=123, status_message="Accepted")
     assert targets[0].problem_id == "1"
+    assert submitted == [123]
+
+
+def test_submission_polling_reaches_terminal_result_after_pending_states() -> None:
+    policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
+    outcome, client, clock = _poll(
+        [
+            ClientResult(data=SubmissionCheck(state="PENDING")),
+            ClientResult(data=SubmissionCheck(state="STARTED")),
+            ClientResult(
+                data=SubmissionCheck(
+                    state="SUCCESS",
+                    status_message="Accepted",
+                    runtime="4 ms",
+                )
+            ),
+        ],
+        policy,
+    )
+
+    assert outcome == SubmissionJudged(
+        submission_id=123,
+        status_message="Accepted",
+        runtime="4 ms",
+    )
+    assert client.timeouts == [5, 4.5, 4]
+    assert clock.sleeps == [0.5, 0.5]
+
+
+def test_submission_polling_uses_total_deadline_and_clamps_sleep() -> None:
+    policy = submission.SubmissionPollingPolicy(
+        wait_timeout_seconds=1,
+        poll_interval_seconds=0.6,
+    )
+    outcome, client, clock = _poll(
+        [
+            ClientResult(data=SubmissionCheck(state="PENDING")),
+            ClientResult(data=SubmissionCheck(state="PENDING")),
+        ],
+        policy,
+    )
+
+    assert outcome == SubmissionTimedOut(submission_id=123, waited_seconds=1)
+    assert client.timeouts == [1, 0.4]
+    assert clock.sleeps == [0.6, 0.4]
+
+
+def test_submission_polling_recovers_from_transient_network_error() -> None:
+    policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
+    outcome, _, clock = _poll(
+        [
+            ClientResult(error=ClientErrorKind.NETWORK),
+            ClientResult(
+                data=SubmissionCheck(
+                    state="SUCCESS",
+                    status_message="Wrong Answer",
+                )
+            ),
+        ],
+        policy,
+    )
+
+    assert outcome == SubmissionJudged(
+        submission_id=123,
+        status_message="Wrong Answer",
+    )
+    assert clock.sleeps == [0.5]
+
+
+def test_submission_polling_retries_server_error_and_resets_error_count() -> None:
+    policy = submission.SubmissionPollingPolicy(
+        wait_timeout_seconds=5,
+        max_consecutive_transient_errors=2,
+    )
+    outcome, _, clock = _poll(
+        [
+            ClientResult(error=ClientErrorKind.HTTP, status_code=503),
+            ClientResult(data=SubmissionCheck(state="PENDING")),
+            ClientResult(error=ClientErrorKind.TIMEOUT),
+            ClientResult(error=ClientErrorKind.TIMEOUT),
+            ClientResult(
+                data=SubmissionCheck(
+                    state="SUCCESS",
+                    status_message="Accepted",
+                )
+            ),
+        ],
+        policy,
+    )
+
+    assert isinstance(outcome, SubmissionJudged)
+    assert clock.sleeps == [0.5, 0.5, 0.5, 0.5]
+
+
+def test_submission_polling_stops_after_transient_error_limit() -> None:
+    policy = submission.SubmissionPollingPolicy(
+        wait_timeout_seconds=5,
+        max_consecutive_transient_errors=2,
+    )
+    outcome, _, clock = _poll(
+        [
+            ClientResult(error=ClientErrorKind.TIMEOUT),
+            ClientResult(error=ClientErrorKind.TIMEOUT),
+            ClientResult(error=ClientErrorKind.TIMEOUT),
+        ],
+        policy,
+    )
+
+    assert isinstance(outcome, SubmissionPollingFailed)
+    assert outcome.submission_id == 123
+    assert outcome.error_kind is ClientErrorKind.TIMEOUT
+    assert clock.sleeps == [0.5, 0.5]
+
+
+def test_submission_polling_honors_rate_limit_retry_after() -> None:
+    policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
+    outcome, _, clock = _poll(
+        [
+            ClientResult(
+                error=ClientErrorKind.HTTP,
+                status_code=429,
+                retry_after_seconds=1.5,
+            ),
+            ClientResult(
+                data=SubmissionCheck(
+                    state="SUCCESS",
+                    status_message="Accepted",
+                )
+            ),
+        ],
+        policy,
+    )
+
+    assert isinstance(outcome, SubmissionJudged)
+    assert clock.sleeps == [1.5]
+
+
+def test_submission_polling_does_not_retry_non_transient_http_error() -> None:
+    policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
+    outcome, _, clock = _poll(
+        [ClientResult(error=ClientErrorKind.HTTP, status_code=401)],
+        policy,
+    )
+
+    assert isinstance(outcome, SubmissionPollingFailed)
+    assert outcome.error_kind is ClientErrorKind.HTTP
+    assert clock.sleeps == []
+
+
+def test_submission_polling_rejects_terminal_result_without_status() -> None:
+    policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
+    outcome, _, _ = _poll(
+        [ClientResult(data=SubmissionCheck(state="SUCCESS"))],
+        policy,
+    )
+
+    assert isinstance(outcome, SubmissionPollingFailed)
+    assert outcome.error_kind is ClientErrorKind.INVALID_RESPONSE
+
+
+@pytest.mark.parametrize("wait_timeout", (0, -1, float("nan"), float("inf")))
+def test_submit_current_solution_rejects_invalid_wait_timeout(
+    wait_timeout,
+    app_paths,
+) -> None:
+    with pytest.raises(UseCaseError, match="判题等待时间"):
+        submission.submit_current_solution(
+            app_paths,
+            wait_timeout_seconds=wait_timeout,
+        )
+
+
+def test_submit_current_solution_never_retries_failed_post(
+    monkeypatch,
+    app_paths,
+) -> None:
+    attempts = []
+
+    class RejectSubmitClient(FakeClient):
+        def submit_solution(
+            self,
+            title_slug: str,
+            question_id: str,
+            code: str,
+        ) -> ClientResult:
+            attempts.append((title_slug, question_id, code))
+            return ClientResult(error=ClientErrorKind.TIMEOUT)
+
+        def get_submission_result(
+            self,
+            submission_id: int,
+            *,
+            timeout: float,
+        ) -> ClientResult:
+            raise AssertionError("failed POST must not start polling")
+
+    monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
+    monkeypatch.setattr(submission, "LeetCodeClient", RejectSubmitClient)
+    monkeypatch.setattr(
+        submission,
+        "parse_solution_submission",
+        lambda path: (
+            ProblemMetadata("1", "1", "Two Sum", "two-sum"),
+            "class Solution:\n    pass",
+        ),
+    )
+
+    with pytest.raises(UseCaseError, match="请求超时"):
+        submission.submit_current_solution(app_paths)
+
+    assert attempts == [("two-sum", "1", "class Solution:\n    pass")]
+
+
+@pytest.mark.parametrize(
+    ("check", "expected"),
+    (
+        (SubmissionCheck(state="PENDING"), SubmissionPending(123)),
+        (
+            SubmissionCheck(
+                state="SUCCESS",
+                status_message="Accepted",
+                runtime="4 ms",
+                memory="17 MB",
+            ),
+            SubmissionJudged(
+                submission_id=123,
+                status_message="Accepted",
+                runtime="4 ms",
+                memory="17 MB",
+            ),
+        ),
+    ),
+)
+def test_check_existing_submission_queries_once(
+    monkeypatch,
+    app_paths,
+    check: SubmissionCheck,
+    expected,
+) -> None:
+    requests = []
+
+    class CheckClient(FakeClient):
+        def get_submission_result(
+            self,
+            submission_id: int,
+            *,
+            timeout: float,
+        ) -> ClientResult:
+            requests.append((submission_id, timeout))
+            return ClientResult(data=check)
+
+    monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
+    monkeypatch.setattr(submission, "LeetCodeClient", CheckClient)
+
+    result = submission.check_existing_submission(app_paths, 123)
+
+    assert result == expected
+    assert requests == [(123, 10)]
+
+
+def test_check_existing_submission_preserves_id_on_request_failure(
+    monkeypatch,
+    app_paths,
+) -> None:
+    class FailedCheckClient(FakeClient):
+        def get_submission_result(
+            self,
+            submission_id: int,
+            *,
+            timeout: float,
+        ) -> ClientResult:
+            return ClientResult(error=ClientErrorKind.NETWORK)
+
+    monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
+    monkeypatch.setattr(submission, "LeetCodeClient", FailedCheckClient)
+
+    result = submission.check_existing_submission(app_paths, 123)
+
+    assert isinstance(result, SubmissionPollingFailed)
+    assert result.submission_id == 123
+    assert result.error_kind is ClientErrorKind.NETWORK
+
+
+@pytest.mark.parametrize("submission_id", (0, -1, True))
+def test_check_existing_submission_rejects_invalid_id(
+    submission_id,
+    app_paths,
+) -> None:
+    with pytest.raises(UseCaseError, match="Submission ID 必须是正整数"):
+        submission.check_existing_submission(app_paths, submission_id)
 
 
 def test_get_doctor_report_collects_local_and_remote_checks(

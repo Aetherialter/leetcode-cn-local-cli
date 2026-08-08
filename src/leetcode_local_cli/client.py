@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from enum import Enum
+import math
 from typing import Any
 
 import httpx
@@ -86,6 +89,7 @@ query questionData($titleSlug: String!) {
 
 
 class ClientErrorKind(str, Enum):
+    TIMEOUT = "timeout"
     NETWORK = "network"
     HTTP = "http"
     INVALID_JSON = "invalid_json"
@@ -99,10 +103,30 @@ class ClientResult:
     data: Any = None
     error: ClientErrorKind | None = None
     message: str = ""
+    status_code: int | None = None
+    retry_after_seconds: float | None = None
 
     @property
     def ok(self) -> bool:
         return self.error is None
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+    if not math.isfinite(seconds) or seconds < 0:
+        return None
+    return seconds
 
 
 class LeetCodeClient:
@@ -137,10 +161,18 @@ class LeetCodeClient:
                 **kwargs,
             )
             response.raise_for_status()
+        except httpx.TimeoutException:
+            return ClientResult(error=ClientErrorKind.TIMEOUT)
         except httpx.RequestError:
             return ClientResult(error=ClientErrorKind.NETWORK)
-        except httpx.HTTPStatusError:
-            return ClientResult(error=ClientErrorKind.HTTP)
+        except httpx.HTTPStatusError as exc:
+            return ClientResult(
+                error=ClientErrorKind.HTTP,
+                status_code=exc.response.status_code,
+                retry_after_seconds=_parse_retry_after(
+                    exc.response.headers.get("Retry-After")
+                ),
+            )
 
         try:
             result = response.json()
@@ -354,20 +386,62 @@ class LeetCodeClient:
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
         return ClientResult(data=submission_id)
 
-    def get_submission_result(self, submission_id: int) -> ClientResult:
+    def get_submission_result(
+        self,
+        submission_id: int,
+        *,
+        timeout: float = 10,
+    ) -> ClientResult:
+        from leetcode_local_cli.submission import SubmissionCheck
+
         result = self._request_json(
             "GET",
             f"/submissions/detail/{submission_id}/check/",
-            timeout=10,
+            timeout=timeout,
         )
         if not result.ok:
             return result
         payload = result.data
         if not isinstance(payload, dict):
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
-        if not isinstance(payload.get("state"), str):
+        state = payload.get("state")
+        if not isinstance(state, str) or not state:
             return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
-        return result
+        status_message = payload.get("status_msg")
+        if status_message is not None and (
+            not isinstance(status_message, str) or not status_message
+        ):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        runtime = payload.get("status_runtime")
+        if runtime is None:
+            runtime = payload.get("runtime")
+        if runtime is not None and not isinstance(runtime, str):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        memory = payload.get("status_memory")
+        if memory is None:
+            memory = payload.get("memory")
+        if memory is not None and not isinstance(memory, str):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        total_correct = payload.get("total_correct")
+        if total_correct is not None and (
+            not isinstance(total_correct, int) or isinstance(total_correct, bool)
+        ):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        total_testcases = payload.get("total_testcases")
+        if total_testcases is not None and (
+            not isinstance(total_testcases, int) or isinstance(total_testcases, bool)
+        ):
+            return ClientResult(error=ClientErrorKind.INVALID_RESPONSE)
+        return ClientResult(
+            data=SubmissionCheck(
+                state=state,
+                status_message=status_message,
+                runtime=runtime,
+                memory=memory,
+                total_correct=total_correct,
+                total_testcases=total_testcases,
+            )
+        )
 
     def close(self) -> None:
         self.client.close()
