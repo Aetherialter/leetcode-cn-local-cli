@@ -2,7 +2,7 @@
 
 面向 LeetCode 中文站的轻量本地刷题 CLI：配置一个工作区，通过 Chrome、Edge 或手动 Cookie 登录，在线获取题目，在 `solution.py` 中解题并进行本地调用、诊断和远程提交。
 
-当前已发布版本：`v0.10.0`。
+当前已发布版本：`v0.10.1`。
 
 ## 安装
 
@@ -11,13 +11,13 @@
 Linux / macOS：
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.10.0/scripts/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.10.1/scripts/install.sh | sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.10.0/scripts/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -Command "irm https://raw.githubusercontent.com/Aetherialter/leetcode-local-cli/v0.10.1/scripts/install.ps1 | iex"
 ```
 
 也可以直接安装并初始化：

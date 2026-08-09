@@ -957,7 +957,7 @@ def test_submit_rejects_invalid_wait_timeout(wait_timeout: str) -> None:
     )
 
     assert result.exit_code == 2
-    assert "--wait-timeout" in result.output
+    assert "--wait-timeout" in unstyle(result.output)
 
 
 def test_submit_forwards_wait_timeout_and_renders_submission_id(monkeypatch) -> None:
