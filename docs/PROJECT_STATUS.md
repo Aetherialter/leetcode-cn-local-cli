@@ -1,6 +1,6 @@
 # 项目状态
 
-当前已发布版本是 `v0.9.0`。当前工作树在此基础上完成了尚未发布的 CLI 分层与文档轻量化。
+当前发布版本是 `v0.10.0`，主题是可靠提交、结果重查和 CLI 应用分层。
 
 ## 当前能力
 
@@ -26,7 +26,7 @@
 - Session 仍是工作区中的明文 JSON。
 - 本地 worker 可限制异常和超时，但不是安全沙箱。
 - 稳定 Python API 和站点适配器尚未形成。
-- 本次 Windows 验收中，在 Zed 进程运行时有一次切题写入于 `os.replace` 阶段返回 `WinError 5`；旧解法得到保留，但是否由编辑器文件占用导致尚未确认。
+- 本次 Windows 验收中，在 Zed 进程运行时有一次切题写入于 `os.replace` 阶段返回 `WinError 5`；旧解法得到保留，随后相同原子替换连续 3 次成功，未形成稳定复现。
 
 详细风险见 [SECURITY_REVIEW](SECURITY_REVIEW.md)。
 
@@ -36,4 +36,4 @@
 
 ## 最近验证
 
-提交可靠性和 `lc check` 改动通过 Ruff format、Ruff lint、Pyright、Windows 完整测试（333 passed、13 skipped）和 CLI 帮助入口检查；提交可靠性改动还通过了 wheel/sdist 构建。2026-08-09 使用维护者明确授权的现有登录态，对随机选取的 10 道免费 Easy 题完成真实提交，10 次均为 Accepted；对应的 10 个 Submission ID 再次执行 `lc check` 均返回 0。测试期间未输出 Cookie，原有空 `solution.py` 已恢复。
+`v0.10.0` 通过 Ruff format、Ruff lint、Pyright、Windows 完整测试（333 passed、13 skipped）、wheel/sdist 构建及两种产物的隔离安装 smoke test。2026-08-09 使用维护者明确授权的现有登录态，对随机选取的 10 道免费 Easy 题完成真实提交，10 次均为 Accepted；对应的 10 个 Submission ID 再次执行 `lc check` 均返回 0。测试期间未输出 Cookie，原有空 `solution.py` 已恢复。
