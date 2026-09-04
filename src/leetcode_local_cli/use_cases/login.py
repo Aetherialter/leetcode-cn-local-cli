@@ -21,6 +21,7 @@ from leetcode_local_cli.browser import (
     BrowserKind,
     get_browser_display_name,
     get_browser_identity_prefixes,
+    get_browser_remote_debugging_url,
     get_browser_session_source,
     open_browser_authorization_pages,
     read_browser_devtools_endpoint,
@@ -117,13 +118,21 @@ def _try_authorized_browser_login(
     reporter: LoginReporter,
 ) -> bool:
     display_name = get_browser_display_name(browser)
+    remote_debugging_url = get_browser_remote_debugging_url(browser)
     source = get_browser_session_source(browser)
+    reporter.info(
+        f"{display_name} 自动登录前，请先打开 {remote_debugging_url}，"
+        "勾选 Allow remote debugging for this browser instance"
+    )
     try:
         try:
             endpoint = read_browser_devtools_endpoint(browser)
         except BrowserAuthorizationPending:
             open_browser_authorization_pages(browser)
-            reporter.info(f"已打开 {display_name} 的 Remote debugging 页面和 LeetCode")
+            reporter.info(
+                f"已尝试打开 {display_name} 的 Remote debugging 页面和 LeetCode；"
+                f"如未显示，请手动打开 {remote_debugging_url}"
+            )
             reporter.info(
                 "请勾选 Allow remote debugging for this browser instance；"
                 f"CLI 最多等待 {BROWSER_LOGIN_TIMEOUT_SECONDS:g} 秒"
@@ -151,7 +160,8 @@ def _try_authorized_browser_login(
                 else:
                     reporter.info(
                         f"{display_name} 当前未运行或授权端点暂不可用，"
-                        "正在自动打开浏览器"
+                        f"正在自动打开浏览器；请在 {remote_debugging_url} "
+                        "确认已勾选 Allow remote debugging for this browser instance"
                     )
                 open_browser_authorization_pages(browser)
                 reporter.info("如出现 Allow remote debugging? 确认框，请选择 Allow")

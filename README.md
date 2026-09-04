@@ -75,13 +75,14 @@ lc check <Submission ID>
 
 ## 浏览器登录
 
-执行 `lc login` 后：
+首次使用浏览器自动登录前：
 
-1. CLI 优先尝试日常 Chrome，再尝试日常 Edge。
-2. 浏览器会打开 Remote debugging 页面与 LeetCode。
-3. 勾选 **Allow remote debugging for this browser instance**；出现确认框时选择 **Allow**。
-4. CLI 只获取 `leetcode.cn` 的 `LEETCODE_SESSION` 和 `csrftoken`，在线验证后保存。
-5. 自动登录失败时，回退到隐藏输入的手动 Cookie。
+1. Chrome 打开 `chrome://inspect/#remote-debugging`；Edge 打开 `edge://inspect/#remote-debugging`。
+2. 勾选 **Allow remote debugging for this browser instance**，再执行 `lc login`。
+3. CLI 优先尝试日常 Chrome，再尝试日常 Edge；如果设置页面没有自动显示，请手动打开上述地址。
+4. 出现 **Allow remote debugging?** 连接确认框时选择 **Allow**，并保持 LeetCode 页面已登录。
+5. CLI 只获取 `leetcode.cn` 的 `LEETCODE_SESSION` 和 `csrftoken`，在线验证后保存。
+6. 自动登录失败时，回退到隐藏输入的手动 Cookie。
 
 CLI 不读取或解密浏览器 Cookie 数据库，不创建专用 profile，也不关闭日常浏览器。授权等待上限为 180 秒。
 

@@ -548,6 +548,12 @@ def test_chrome_login_starts_browser_when_saved_endpoint_is_unreachable(
 ) -> None:
     cookies = {"LEETCODE_SESSION": "session", "csrftoken": "csrf"}
     events = []
+    info_messages = []
+    reporter = login_use_case.LoginReporter(
+        info=info_messages.append,
+        warning=lambda message: None,
+        loading=lambda message: nullcontext(),
+    )
     endpoint = BrowserDevToolsEndpoint(
         port=53127,
         debugger_url="ws://127.0.0.1:53127/devtools/browser/example",
@@ -587,7 +593,7 @@ def test_chrome_login_starts_browser_when_saved_endpoint_is_unreachable(
         login_use_case._try_authorized_browser_login(
             BrowserKind.CHROME,
             Path("session.json"),
-            reporter=login_reporter,
+            reporter=reporter,
         )
         is True
     )
@@ -596,6 +602,16 @@ def test_chrome_login_starts_browser_when_saved_endpoint_is_unreachable(
         ("sleep", login_use_case.BROWSER_WINDOW_READY_DELAY_SECONDS),
         ("wait", BrowserKind.CHROME),
     ]
+    assert info_messages[0] == (
+        "Google Chrome 自动登录前，请先打开 "
+        "chrome://inspect/#remote-debugging，"
+        "勾选 Allow remote debugging for this browser instance"
+    )
+    assert any(
+        "当前未运行或授权端点暂不可用" in message
+        and "chrome://inspect/#remote-debugging" in message
+        for message in info_messages
+    )
 
 
 def test_wait_for_browser_cookies_retries_while_browser_starts(monkeypatch) -> None:

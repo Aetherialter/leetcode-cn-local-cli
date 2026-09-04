@@ -40,6 +40,23 @@ def test_find_edge_executable_uses_known_windows_installation(tmp_path: Path) ->
 
 
 @pytest.mark.parametrize(
+    ("kind", "expected_url"),
+    [
+        (
+            browser.BrowserKind.CHROME,
+            "chrome://inspect/#remote-debugging",
+        ),
+        (
+            browser.BrowserKind.EDGE,
+            "edge://inspect/#remote-debugging",
+        ),
+    ],
+)
+def test_browser_remote_debugging_url_matches_browser(kind, expected_url) -> None:
+    assert browser.get_browser_remote_debugging_url(kind) == expected_url
+
+
+@pytest.mark.parametrize(
     ("finder", "browser_name"),
     [
         (browser.find_chrome_executable, "Chrome"),

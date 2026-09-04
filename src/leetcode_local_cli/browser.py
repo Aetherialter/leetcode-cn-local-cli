@@ -79,6 +79,10 @@ def get_browser_session_source(browser: BrowserKind) -> str:
     return _get_browser_definition(browser).session_source
 
 
+def get_browser_remote_debugging_url(browser: BrowserKind) -> str:
+    return _get_browser_definition(browser).remote_debugging_url
+
+
 def get_browser_identity_prefixes(browser: BrowserKind) -> tuple[str, ...]:
     return _get_browser_definition(browser).identity_prefixes
 
