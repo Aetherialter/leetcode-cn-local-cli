@@ -48,7 +48,7 @@ def test(
 
     try:
         worker = start_local_test(
-            common.require_app_paths().solution_file,
+            common.require_workspace_paths().solution_file,
             timeout=timeout,
         )
     except UseCaseError as exc:
@@ -225,7 +225,7 @@ def doctor(
         ),
     ] = False,
 ) -> None:
-    paths = common.require_app_paths()
+    paths = common.get_user_paths()
     with loading("正在检查本地环境与 LeetCode 连接..."):
         report = get_doctor_report(paths, run_solution=run_solution)
     render_doctor_report(report)

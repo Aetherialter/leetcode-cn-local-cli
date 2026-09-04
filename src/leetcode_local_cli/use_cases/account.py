@@ -1,7 +1,7 @@
 from typing import Any
 
 from leetcode_local_cli.client import ClientErrorKind, LeetCodeClient
-from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.paths import UserPaths
 from leetcode_local_cli.use_cases.common import (
     UseCaseError,
     client_error_message,
@@ -9,7 +9,7 @@ from leetcode_local_cli.use_cases.common import (
 )
 
 
-def get_user_status(paths: AppPaths) -> dict[str, Any]:
+def get_user_status(paths: UserPaths) -> dict[str, Any]:
     cookies = load_cookies_from_session(paths)
     with LeetCodeClient(cookies) as client:
         user_status = client.user_status()
@@ -21,7 +21,7 @@ def get_user_status(paths: AppPaths) -> dict[str, Any]:
     return status
 
 
-def get_account_profile(paths: AppPaths) -> dict[str, Any]:
+def get_account_profile(paths: UserPaths) -> dict[str, Any]:
     cookies = load_cookies_from_session(paths)
     with LeetCodeClient(cookies) as client:
         account_profile = client.account_profile()

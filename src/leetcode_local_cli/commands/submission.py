@@ -62,7 +62,7 @@ def check(
         )
     try:
         result = check_existing_submission(
-            common.require_app_paths(),
+            common.get_user_paths(),
             submission_id,
         )
     except UseCaseError as exc:

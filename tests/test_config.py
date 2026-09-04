@@ -92,7 +92,7 @@ def test_load_workspace_config_returns_none_when_file_is_missing(
 
 
 def test_load_workspace_config_returns_typed_model(tmp_path: Path) -> None:
-    config_file = tmp_path / ".leetcode-local-cli.toml"
+    config_file = tmp_path / ".leetcode_local_cli" / "workspace.toml"
     _write_workspace_config(config_file)
 
     result = load_workspace_config(config_file)
@@ -118,7 +118,8 @@ def test_load_workspace_config_rejects_invalid_content(
     tmp_path: Path,
     content: str,
 ) -> None:
-    config_file = tmp_path / ".leetcode-local-cli.toml"
+    config_file = tmp_path / ".leetcode_local_cli" / "workspace.toml"
+    config_file.parent.mkdir()
     config_file.write_text(content, encoding="utf-8")
 
     with pytest.raises(ConfigError):
@@ -128,14 +129,19 @@ def test_load_workspace_config_rejects_invalid_content(
 def test_resolve_app_paths_uses_configured_workspace(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace"
     user_config_file = tmp_path / "config" / "config.toml"
+    user_state_directory = tmp_path / "state"
     _write_user_config(user_config_file, workspace_root)
-    _write_workspace_config(workspace_root / ".leetcode-local-cli.toml")
+    _write_workspace_config(workspace_root / ".leetcode_local_cli" / "workspace.toml")
 
-    paths = resolve_app_paths(user_config_file)
+    paths = resolve_app_paths(
+        user_config_file,
+        user_state_directory=user_state_directory,
+    )
 
-    assert paths.user_config_file == user_config_file
-    assert paths.workspace_root == workspace_root
-    assert paths.solution_file == workspace_root / "solution.py"
+    assert paths.user.user_config_file == user_config_file
+    assert paths.user.session_file == user_state_directory / "session.json"
+    assert paths.workspace.workspace_root == workspace_root
+    assert paths.workspace.solution_file == workspace_root / "solution.py"
 
 
 def test_resolve_app_paths_rejects_missing_user_config(tmp_path: Path) -> None:
@@ -149,13 +155,23 @@ def test_resolve_app_paths_rejects_missing_workspace_config(tmp_path: Path) -> N
     user_config_file = tmp_path / "config.toml"
     _write_user_config(user_config_file, workspace_root)
 
-    with pytest.raises(ConfigError, match="工作区配置"):
+    with pytest.raises(ConfigError, match="工作区标记"):
+        resolve_app_paths(user_config_file)
+
+
+def test_resolve_app_paths_does_not_accept_legacy_root_marker(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    user_config_file = tmp_path / "config.toml"
+    _write_user_config(user_config_file, workspace_root)
+    _write_workspace_config(workspace_root / ".leetcode-local-cli.toml")
+
+    with pytest.raises(ConfigError, match="工作区标记"):
         resolve_app_paths(user_config_file)
 
 
 def test_resolve_app_paths_rejects_workspace_symlink(tmp_path: Path) -> None:
     actual_workspace = tmp_path / "actual-workspace"
-    _write_workspace_config(actual_workspace / ".leetcode-local-cli.toml")
+    _write_workspace_config(actual_workspace / ".leetcode_local_cli" / "workspace.toml")
     linked_workspace = tmp_path / "linked-workspace"
     try:
         linked_workspace.symlink_to(actual_workspace, target_is_directory=True)
@@ -180,8 +196,10 @@ def test_initialize_workspace_creates_versioned_files_and_user_config(
     )
 
     assert result.workspace_created
+    assert result.metadata_directory_created
     assert result.workspace_config_created
     assert result.solution_created
+    assert not (result.paths.metadata_directory / "session.json").exists()
     assert load_workspace_config(result.paths.workspace_config_file) == WorkspaceConfig(
         version=CONFIG_VERSION,
         site="cn",
@@ -224,7 +242,8 @@ def test_initialize_workspace_rejects_corrupt_marker_without_modifying_files(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
-    marker = workspace_root / ".leetcode-local-cli.toml"
+    marker = workspace_root / ".leetcode_local_cli" / "workspace.toml"
+    marker.parent.mkdir()
     marker.write_text("invalid = [", encoding="utf-8")
     solution_file = workspace_root / "solution.py"
     solution_file.write_text("user code", encoding="utf-8")
@@ -262,7 +281,31 @@ def test_initialize_workspace_rejects_solution_symlink_without_touching_target(
 
     assert solution_file.is_symlink()
     assert external_file.read_text(encoding="utf-8") == "external content"
-    assert not (workspace_root / ".leetcode-local-cli.toml").exists()
+    assert not (workspace_root / ".leetcode_local_cli").exists()
+
+
+def test_initialize_workspace_rejects_metadata_directory_symlink(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    external_directory = tmp_path / "external"
+    external_directory.mkdir()
+    metadata_directory = workspace_root / ".leetcode_local_cli"
+    try:
+        metadata_directory.symlink_to(external_directory, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symbolic links are unavailable: {exc}")
+
+    with pytest.raises(ConfigError, match="符号链接"):
+        initialize_workspace(
+            workspace_root,
+            user_config_file=tmp_path / "config.toml",
+        )
+
+    assert metadata_directory.is_symlink()
+    assert not (external_directory / "workspace.toml").exists()
+    assert not (workspace_root / "solution.py").exists()
 
 
 def test_initialize_workspace_rolls_back_created_workspace_files_on_failure(

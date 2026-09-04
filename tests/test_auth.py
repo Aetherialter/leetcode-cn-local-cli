@@ -199,6 +199,19 @@ def test_save_session_creates_private_canonical_directory(tmp_path) -> None:
         assert stat.S_IMODE(session_dir.stat().st_mode) == 0o700
 
 
+def test_save_session_rejects_state_directory_file(tmp_path) -> None:
+    state_directory = tmp_path / "state"
+    state_directory.write_text("not a directory", encoding="utf-8")
+
+    with pytest.raises(auth.SessionFileError, match="无法保存 Session 文件"):
+        auth.save_session(
+            {"cookies": {"LEETCODE_SESSION": "session-value"}},
+            state_directory / "session.json",
+        )
+
+    assert state_directory.read_text(encoding="utf-8") == "not a directory"
+
+
 def test_save_session_cleans_temporary_file_after_serialization_error(
     tmp_path,
 ) -> None:

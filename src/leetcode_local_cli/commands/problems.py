@@ -15,7 +15,7 @@ from leetcode_local_cli.use_cases.problems import (
 def get_problem(question_id: str) -> None:
     try:
         problem_detail = get_problem_detail_by_question_id(
-            common.require_app_paths(),
+            common.get_user_paths(),
             question_id,
             progress=loading,
         )
@@ -27,7 +27,7 @@ def get_problem(question_id: str) -> None:
 def show(limit: int = 50, skip: int = 0) -> None:
     try:
         problem_summaries = get_problem_summaries(
-            common.require_app_paths(),
+            common.get_user_paths(),
             limit=limit,
             skip=skip,
             progress=loading,
@@ -41,7 +41,7 @@ def solve(question_id: str) -> None:
     paths = common.require_app_paths()
     try:
         problem_detail = get_problem_detail_by_question_id(
-            paths,
+            paths.user,
             question_id,
             progress=loading,
         )
@@ -49,6 +49,6 @@ def solve(question_id: str) -> None:
         common.exit_for_use_case_error(exc)
     render_problem_detail(problem_detail)
     try:
-        write_problem_solution(paths, problem_detail)
+        write_problem_solution(paths.workspace, problem_detail)
     except UseCaseError as exc:
         common.exit_for_use_case_error(exc)

@@ -2,15 +2,31 @@ from typing import NoReturn
 
 from typer import Exit
 
-from leetcode_local_cli.config import ConfigError, resolve_app_paths
-from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.config import (
+    ConfigError,
+    resolve_app_paths,
+    resolve_workspace_paths,
+)
+from leetcode_local_cli.paths import AppPaths, UserPaths, WorkspacePaths
 from leetcode_local_cli.ui import error, warning
 from leetcode_local_cli.use_cases.common import UseCaseError
+
+
+def get_user_paths() -> UserPaths:
+    return UserPaths.defaults()
 
 
 def require_app_paths() -> AppPaths:
     try:
         return resolve_app_paths()
+    except ConfigError as exc:
+        error(str(exc))
+        raise Exit(1) from exc
+
+
+def require_workspace_paths() -> WorkspacePaths:
+    try:
+        return resolve_workspace_paths()
     except ConfigError as exc:
         error(str(exc))
         raise Exit(1) from exc

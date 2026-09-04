@@ -64,6 +64,7 @@ def _find_secret_keys(value: object) -> set[str]:
         ".vscode/settings.json",
         ".cursor/settings.json",
         ".codex/session.json",
+        ".leetcode_local_cli/workspace.toml",
         ".env.local",
         "credentials.json",
         "private/credentials.dev.json",

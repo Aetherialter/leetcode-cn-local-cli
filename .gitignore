@@ -29,9 +29,10 @@ Desktop.ini
 *.swo
 *~
 
-# Local secrets and runtime state
+# Local workspace metadata
 .leetcode_local_cli/
-# Keep the pre-v0.7 path ignored so an interrupted migration cannot expose cookies.
+
+# Legacy local secret locations remain ignored to avoid exposing stale credentials.
 .aether_lc/
 
 # Common personal credential JSON names. Do not ignore all JSON files because

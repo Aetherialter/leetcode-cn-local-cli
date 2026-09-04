@@ -281,6 +281,7 @@ def render_doctor_report(report: DoctorReport) -> None:
         "session": "Session 文件",
         "connectivity": "LeetCode 接口",
         "authentication": "Cookie 登录态",
+        "workspace": "工作区",
         "solution": "solution.py",
     }
     status_labels = {

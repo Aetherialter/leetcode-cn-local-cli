@@ -43,10 +43,13 @@ uv tool uninstall leetcode-local-cli
 ## 快速开始
 
 ```shell
-lc init
 lc login
-lc doctor
+lc status
+lc profile
+lc show
 lc get 1
+lc init
+lc doctor
 lc solve 1
 lc test
 lc submit
@@ -72,6 +75,8 @@ lc check <Submission ID>
 | `lc doctor [--run-solution]` | 检查工作区、Session 和网络；可选择执行解法 |
 | `lc submit [--wait-timeout 秒数]` | 提交 marker 区域并限时等待判题；仅 Accepted 返回 0 |
 | `lc check <Submission ID>` | 查询一次已有提交的当前状态，不会重新提交代码 |
+
+`login`、`status`、`profile`、`show`、`get`、`check` 和不带 `--run-solution` 的 `doctor` 不要求先初始化工作区。其中除 `login` 外的在线命令需要已有有效 Session。`solve`、`test`、`submit` 和 `doctor --run-solution` 需要已配置的工作区。
 
 ## 浏览器登录
 
@@ -109,7 +114,8 @@ printf 'nums = [3, 2, 4], target = 6\n' | lc test --stdin
 ## 安全与限制
 
 - 当前只支持 LeetCode 中文站和 Python3 提交。
-- Session 保存在工作区 `.leetcode_local_cli/session.json`，包含真实 Cookie，不得提交、上传、同步或共享。
+- Session 包含真实 Cookie，保存在当前系统用户的本地状态目录：Windows 为 `%LOCALAPPDATA%\leetcode-local-cli\session.json`，macOS 为 `~/Library/Application Support/leetcode-local-cli/session.json`，Linux 为 `${XDG_STATE_HOME:-~/.local/state}/leetcode-local-cli/session.json`。不得提交、上传、同步或共享。
+- 工作区 marker 保存在 `.leetcode_local_cli/workspace.toml`，属于本机工作区元数据；建议忽略，不提交。CLI 不自动修改用户仓库的 `.gitignore`。
 - `solution.py` 只接受 UTF-8 或 UTF-8 BOM。
 - `lc test` 与 `lc doctor --run-solution` 会执行本地代码，只能用于可信工作区。
 - 判题等待超时不代表提交失败，应使用终端显示的 submission ID 到 LeetCode 查看最终结果。

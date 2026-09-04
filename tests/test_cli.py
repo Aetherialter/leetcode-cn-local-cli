@@ -50,8 +50,15 @@ def configured_app_paths(tmp_path, monkeypatch) -> AppPaths:
     paths = AppPaths.from_workspace(
         tmp_path / "workspace",
         user_config_file=tmp_path / "config.toml",
+        user_state_directory=tmp_path / "state",
     )
     monkeypatch.setattr(command_common, "require_app_paths", lambda: paths)
+    monkeypatch.setattr(command_common, "get_user_paths", lambda: paths.user)
+    monkeypatch.setattr(
+        command_common,
+        "require_workspace_paths",
+        lambda: paths.workspace,
+    )
     return paths
 
 
@@ -106,7 +113,7 @@ def test_init_explicit_path_yes_creates_and_configures_workspace(
     result = runner.invoke(cli.app, ["init", str(workspace_root), "--yes"])
 
     assert result.exit_code == 0, result.output
-    assert (workspace_root / ".leetcode-local-cli.toml").is_file()
+    assert (workspace_root / ".leetcode_local_cli" / "workspace.toml").is_file()
     assert (workspace_root / "solution.py").read_text(encoding="utf-8") == ""
     assert workspace_root.as_posix() in user_config_file.read_text(encoding="utf-8")
 
@@ -124,7 +131,7 @@ def test_init_without_path_appends_fixed_workspace_directory(
 
     workspace_root = tmp_path / "leetcode-local-cli"
     assert result.exit_code == 0, result.output
-    assert (workspace_root / ".leetcode-local-cli.toml").is_file()
+    assert (workspace_root / ".leetcode_local_cli" / "workspace.toml").is_file()
     assert (workspace_root / "solution.py").is_file()
 
 
@@ -227,6 +234,80 @@ def test_doctor_command_exits_nonzero_for_failed_report(monkeypatch) -> None:
     assert result.exit_code == 1
 
 
+def test_user_scope_commands_do_not_require_workspace_resolution(
+    configured_app_paths,
+    monkeypatch,
+) -> None:
+    def reject_workspace_resolution():
+        pytest.fail("user-scope command must not resolve a workspace")
+
+    problem = object()
+    report = DoctorReport(checks=(DoctorCheck("session", DoctorStatus.PASS, "ok"),))
+    monkeypatch.setattr(
+        command_common, "require_app_paths", reject_workspace_resolution
+    )
+    monkeypatch.setattr(
+        command_common,
+        "require_workspace_paths",
+        reject_workspace_resolution,
+    )
+    monkeypatch.setattr(
+        account_commands,
+        "try_automatic_login",
+        lambda browser, session_file, *, reporter, devtools_port=None: True,
+    )
+    monkeypatch.setattr(
+        account_commands,
+        "get_user_status",
+        lambda paths: {"username": "learner"},
+    )
+    monkeypatch.setattr(account_commands, "get_account_profile", lambda paths: {})
+    monkeypatch.setattr(account_commands, "render_profile", lambda profile: None)
+    monkeypatch.setattr(
+        problem_commands,
+        "get_problem_summaries",
+        lambda paths, *, limit, skip, progress: [],
+    )
+    monkeypatch.setattr(problem_commands, "render_problem_list", lambda problems: None)
+    monkeypatch.setattr(
+        problem_commands,
+        "get_problem_detail_by_question_id",
+        lambda paths, question_id, *, progress: problem,
+    )
+    monkeypatch.setattr(problem_commands, "render_problem_detail", lambda detail: None)
+    monkeypatch.setattr(
+        submission_commands,
+        "check_existing_submission",
+        lambda paths, submission_id: SubmissionJudged(
+            submission_id=submission_id,
+            status_message="Accepted",
+        ),
+    )
+    monkeypatch.setattr(
+        submission_commands,
+        "render_submission_result",
+        lambda result: None,
+    )
+    monkeypatch.setattr(
+        testing_commands,
+        "get_doctor_report",
+        lambda paths, *, run_solution=False: report,
+    )
+    monkeypatch.setattr(testing_commands, "render_doctor_report", lambda report: None)
+
+    for arguments in (
+        ["login"],
+        ["status"],
+        ["profile"],
+        ["show"],
+        ["get", "1"],
+        ["check", "123"],
+        ["doctor"],
+    ):
+        result = runner.invoke(cli.app, arguments)
+        assert result.exit_code == 0, (arguments, result.output)
+
+
 def test_login_uses_explicit_chrome_devtools_port_without_manual_fallback(
     configured_app_paths,
     monkeypatch,
@@ -285,7 +366,7 @@ def test_login_uses_explicit_chrome_devtools_port_without_manual_fallback(
                 "username": "learner",
                 "cookies": cookies,
             },
-            configured_app_paths.session_file,
+            configured_app_paths.user.session_file,
         )
     ]
 
@@ -769,7 +850,7 @@ def test_test_command_rejects_invalid_encoding_without_running(
     configured_app_paths,
     monkeypatch,
 ) -> None:
-    solution_file = configured_app_paths.solution_file
+    solution_file = configured_app_paths.workspace.solution_file
     solution_file.parent.mkdir(parents=True)
     solution_file.write_bytes(b"\xff\xfeinvalid source")
     monkeypatch.setattr(
@@ -788,7 +869,7 @@ def test_test_command_rejects_invalid_encoding_without_running(
 def test_test_command_interactively_runs_detected_solution_entry(
     configured_app_paths,
 ) -> None:
-    solution_file = configured_app_paths.solution_file
+    solution_file = configured_app_paths.workspace.solution_file
     solution_file.parent.mkdir(parents=True)
     solution_file.write_text(
         """
@@ -819,7 +900,7 @@ class Solution:
 def test_test_command_rejects_empty_input_without_claiming_success(
     configured_app_paths,
 ) -> None:
-    solution_file = configured_app_paths.solution_file
+    solution_file = configured_app_paths.workspace.solution_file
     solution_file.parent.mkdir(parents=True)
     solution_file.write_text(
         """
@@ -840,7 +921,7 @@ class Solution:
 def test_test_command_continues_after_a_bad_input_and_returns_nonzero(
     configured_app_paths,
 ) -> None:
-    solution_file = configured_app_paths.solution_file
+    solution_file = configured_app_paths.workspace.solution_file
     solution_file.parent.mkdir(parents=True)
     solution_file.write_text(
         """
@@ -873,7 +954,7 @@ def test_test_command_rejects_invalid_timeout(timeout: str) -> None:
 
 
 def test_test_command_stdin_outputs_json_lines(configured_app_paths) -> None:
-    solution_file = configured_app_paths.solution_file
+    solution_file = configured_app_paths.workspace.solution_file
     solution_file.parent.mkdir(parents=True)
     solution_file.write_text(
         """
@@ -1017,7 +1098,7 @@ def test_submit_rejects_invalid_encoding_before_remote_request(
     configured_app_paths,
     monkeypatch,
 ) -> None:
-    solution_file = configured_app_paths.solution_file
+    solution_file = configured_app_paths.workspace.solution_file
     solution_file.parent.mkdir(parents=True)
     solution_file.write_bytes(b"\xff\xfeinvalid source")
     monkeypatch.setattr(

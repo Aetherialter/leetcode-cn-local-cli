@@ -5,6 +5,8 @@ import tomllib
 
 from leetcode_local_cli.paths import (
     AppPaths,
+    UserPaths,
+    WorkspacePaths,
     get_user_config_file,
     normalize_workspace_path,
 )
@@ -44,8 +46,9 @@ class WorkspaceConfig:
 
 @dataclass(frozen=True)
 class WorkspaceInitResult:
-    paths: AppPaths
+    paths: WorkspacePaths
     workspace_created: bool
+    metadata_directory_created: bool
     workspace_config_created: bool
     solution_created: bool
 
@@ -54,6 +57,7 @@ class WorkspaceInitResult:
         return not any(
             (
                 self.workspace_created,
+                self.metadata_directory_created,
                 self.workspace_config_created,
                 self.solution_created,
             )
@@ -170,34 +174,52 @@ def load_workspace_config(path: Path) -> WorkspaceConfig | None:
     return WorkspaceConfig(version=version, site=site, language=language)
 
 
-def resolve_app_paths(user_config_file: Path | None = None) -> AppPaths:
-    config_file = (
-        get_user_config_file()
-        if user_config_file is None
-        else normalize_workspace_path(user_config_file)
-    )
+def _resolve_workspace_paths(config_file: Path) -> WorkspacePaths:
     user_config = load_user_config(config_file)
     if user_config is None:
         raise ConfigError("尚未配置工作区，请先执行 lc init")
-    paths = AppPaths.from_workspace(
-        user_config.default_workspace,
-        user_config_file=config_file,
-    )
+    workspace_paths = WorkspacePaths.from_root(user_config.default_workspace)
     try:
         workspace_status = validate_directory_target(
-            paths.workspace_root,
+            workspace_paths.workspace_root,
             label="默认工作区目录",
         )
     except SafeFileError as exc:
         raise ConfigError(str(exc)) from exc
     if workspace_status is None:
         raise ConfigError("默认工作区目录不存在，请执行 lc init <完整路径> 重新配置")
-    workspace_config = load_workspace_config(paths.workspace_config_file)
+    workspace_config = load_workspace_config(workspace_paths.workspace_config_file)
     if workspace_config is None:
-        raise ConfigError("默认目录缺少工作区配置，请执行 lc init <完整路径> 重新配置")
+        raise ConfigError("默认目录缺少工作区标记，请执行 lc init <完整路径> 重新配置")
     if workspace_config.site != user_config.default_site:
         raise ConfigError("用户配置与工作区配置的站点不一致")
-    return paths
+    return workspace_paths
+
+
+def resolve_workspace_paths(
+    user_config_file: Path | None = None,
+) -> WorkspacePaths:
+    config_file = (
+        get_user_config_file()
+        if user_config_file is None
+        else normalize_workspace_path(user_config_file)
+    )
+    return _resolve_workspace_paths(config_file)
+
+
+def resolve_app_paths(
+    user_config_file: Path | None = None,
+    *,
+    user_state_directory: Path | None = None,
+) -> AppPaths:
+    user_paths = UserPaths.defaults(
+        user_config_file=user_config_file,
+        user_state_directory=user_state_directory,
+    )
+    return AppPaths(
+        user=user_paths,
+        workspace=_resolve_workspace_paths(user_paths.user_config_file),
+    )
 
 
 def _toml_string(value: str) -> str:
@@ -231,18 +253,21 @@ def initialize_workspace(
         else normalize_workspace_path(user_config_file)
     )
     load_user_config(config_file)
-    paths = AppPaths.from_workspace(
-        workspace_root,
-        user_config_file=config_file,
-    )
+    paths = WorkspacePaths.from_root(workspace_root)
 
     workspace_created = False
+    metadata_directory_created = False
     workspace_config_created = False
     solution_created = False
     try:
         workspace_created = ensure_regular_directory(
             paths.workspace_root,
             label="工作区目录",
+        )
+        metadata_directory_created = ensure_regular_directory(
+            paths.metadata_directory,
+            label="工作区元数据目录",
+            mode=0o700,
         )
         existing_workspace_config = load_workspace_config(paths.workspace_config_file)
         if existing_workspace_config is None:
@@ -289,6 +314,8 @@ def initialize_workspace(
             _remove_created_file(paths.solution_file)
         if workspace_config_created:
             _remove_created_file(paths.workspace_config_file)
+        if metadata_directory_created:
+            _remove_created_directory(paths.metadata_directory)
         if workspace_created:
             _remove_created_directory(paths.workspace_root)
         if isinstance(exc, ConfigError):
@@ -298,6 +325,7 @@ def initialize_workspace(
     return WorkspaceInitResult(
         paths=paths,
         workspace_created=workspace_created,
+        metadata_directory_created=metadata_directory_created,
         workspace_config_created=workspace_config_created,
         solution_created=solution_created,
     )

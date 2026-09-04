@@ -5,7 +5,7 @@ import pytest
 
 from leetcode_local_cli.client import ClientErrorKind, ClientResult, LeetCodeClient
 from leetcode_local_cli.doctor import DoctorCheck, DoctorStatus
-from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.paths import AppPaths, UserPaths, WorkspacePaths
 from leetcode_local_cli.problem import ParseQuestionIdResult
 from leetcode_local_cli.submission import (
     SubmissionCheck,
@@ -82,10 +82,18 @@ def _poll(
 
 
 @pytest.fixture
-def app_paths(tmp_path) -> AppPaths:
-    return AppPaths.from_workspace(
-        tmp_path / "workspace",
+def user_paths(tmp_path) -> UserPaths:
+    return UserPaths.defaults(
         user_config_file=tmp_path / "config.toml",
+        user_state_directory=tmp_path / "state",
+    )
+
+
+@pytest.fixture
+def app_paths(tmp_path, user_paths: UserPaths) -> AppPaths:
+    return AppPaths(
+        user=user_paths,
+        workspace=WorkspacePaths.from_root(tmp_path / "workspace"),
     )
 
 
@@ -115,7 +123,7 @@ def test_use_cases_do_not_depend_on_cli_or_rich() -> None:
 
 def test_load_cookies_stops_on_failed_session_inspection(
     monkeypatch,
-    app_paths,
+    user_paths,
 ) -> None:
     monkeypatch.setattr(
         common,
@@ -134,13 +142,13 @@ def test_load_cookies_stops_on_failed_session_inspection(
     )
 
     with pytest.raises(UseCaseError) as caught:
-        common.load_cookies_from_session(app_paths)
+        common.load_cookies_from_session(user_paths)
 
     assert caught.value.message == "Session 文件结构无效"
     assert caught.value.suggestion == "请重新登录"
 
 
-def test_get_user_status_reports_client_error(monkeypatch, app_paths) -> None:
+def test_get_user_status_reports_client_error(monkeypatch, user_paths) -> None:
     class ErrorClient(FakeClient):
         def user_status(self) -> ClientResult:
             return ClientResult(error=ClientErrorKind.NETWORK)
@@ -149,7 +157,7 @@ def test_get_user_status_reports_client_error(monkeypatch, app_paths) -> None:
     monkeypatch.setattr(account, "LeetCodeClient", ErrorClient)
 
     with pytest.raises(UseCaseError, match="网络请求失败"):
-        account.get_user_status(app_paths)
+        account.get_user_status(user_paths)
 
 
 @pytest.mark.parametrize(
@@ -176,7 +184,7 @@ def test_parse_question_id_rejects_success_without_id(monkeypatch) -> None:
 
 def test_get_problem_summaries_rejects_invalid_response(
     monkeypatch,
-    app_paths,
+    user_paths,
 ) -> None:
     class InvalidProblemListClient(FakeClient):
         def problem_list(self, limit: int = 50, skip: int = 0) -> ClientResult:
@@ -186,7 +194,7 @@ def test_get_problem_summaries_rejects_invalid_response(
     monkeypatch.setattr(problems, "LeetCodeClient", InvalidProblemListClient)
 
     with pytest.raises(UseCaseError, match="数据结构异常"):
-        problems.get_problem_summaries(app_paths)
+        problems.get_problem_summaries(user_paths)
 
 
 @pytest.mark.parametrize(
@@ -201,10 +209,10 @@ def test_get_problem_summaries_rejects_invalid_options(
     limit,
     skip,
     message,
-    app_paths,
+    user_paths,
 ) -> None:
     with pytest.raises(UseCaseError, match=message):
-        problems.get_problem_summaries(app_paths, limit=limit, skip=skip)
+        problems.get_problem_summaries(user_paths, limit=limit, skip=skip)
 
 
 def test_submit_current_solution_returns_result_and_reports_target(
@@ -496,7 +504,7 @@ def test_submit_current_solution_never_retries_failed_post(
 )
 def test_check_existing_submission_queries_once(
     monkeypatch,
-    app_paths,
+    user_paths,
     check: SubmissionCheck,
     expected,
 ) -> None:
@@ -515,7 +523,7 @@ def test_check_existing_submission_queries_once(
     monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
     monkeypatch.setattr(submission, "LeetCodeClient", CheckClient)
 
-    result = submission.check_existing_submission(app_paths, 123)
+    result = submission.check_existing_submission(user_paths, 123)
 
     assert result == expected
     assert requests == [(123, 10)]
@@ -523,7 +531,7 @@ def test_check_existing_submission_queries_once(
 
 def test_check_existing_submission_preserves_id_on_request_failure(
     monkeypatch,
-    app_paths,
+    user_paths,
 ) -> None:
     class FailedCheckClient(FakeClient):
         def get_submission_result(
@@ -537,7 +545,7 @@ def test_check_existing_submission_preserves_id_on_request_failure(
     monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
     monkeypatch.setattr(submission, "LeetCodeClient", FailedCheckClient)
 
-    result = submission.check_existing_submission(app_paths, 123)
+    result = submission.check_existing_submission(user_paths, 123)
 
     assert isinstance(result, SubmissionPollingFailed)
     assert result.submission_id == 123
@@ -547,10 +555,10 @@ def test_check_existing_submission_preserves_id_on_request_failure(
 @pytest.mark.parametrize("submission_id", (0, -1, True))
 def test_check_existing_submission_rejects_invalid_id(
     submission_id,
-    app_paths,
+    user_paths,
 ) -> None:
     with pytest.raises(UseCaseError, match="Submission ID 必须是正整数"):
-        submission.check_existing_submission(app_paths, submission_id)
+        submission.check_existing_submission(user_paths, submission_id)
 
 
 def test_get_doctor_report_collects_local_and_remote_checks(
@@ -564,6 +572,11 @@ def test_get_doctor_report_collects_local_and_remote_checks(
     monkeypatch.setattr(diagnostics, "load_session", lambda path: _session_data())
     monkeypatch.setattr(diagnostics, "LeetCodeClient", DoctorClient)
     monkeypatch.setattr(diagnostics, "diagnose_session", lambda path: _check("session"))
+    monkeypatch.setattr(
+        diagnostics,
+        "_diagnose_workspace",
+        lambda paths, *, required: (_check("workspace"), app_paths.workspace),
+    )
     received = []
     monkeypatch.setattr(
         diagnostics,
@@ -573,13 +586,14 @@ def test_get_doctor_report_collects_local_and_remote_checks(
         ),
     )
 
-    report = diagnostics.get_doctor_report(app_paths)
+    report = diagnostics.get_doctor_report(app_paths.user)
 
     assert received == [False]
     assert [check.name for check in report.checks] == [
         "session",
         "connectivity",
         "authentication",
+        "workspace",
         "solution",
     ]
     assert report.ok
@@ -596,6 +610,11 @@ def test_get_doctor_report_forwards_solution_execution(
     monkeypatch.setattr(diagnostics, "load_session", lambda path: None)
     monkeypatch.setattr(diagnostics, "LeetCodeClient", DoctorClient)
     monkeypatch.setattr(diagnostics, "diagnose_session", lambda path: _check("session"))
+    monkeypatch.setattr(
+        diagnostics,
+        "_diagnose_workspace",
+        lambda paths, *, required: (_check("workspace"), app_paths.workspace),
+    )
     received = []
     monkeypatch.setattr(
         diagnostics,
@@ -605,6 +624,50 @@ def test_get_doctor_report_forwards_solution_execution(
         ),
     )
 
-    diagnostics.get_doctor_report(app_paths, run_solution=True)
+    diagnostics.get_doctor_report(app_paths.user, run_solution=True)
 
     assert received == [True]
+
+
+def test_get_doctor_report_warns_and_skips_solution_without_workspace(
+    monkeypatch,
+    user_paths,
+) -> None:
+    class DoctorClient(FakeClient):
+        def user_status(self) -> ClientResult:
+            return ClientResult(data={"isSignedIn": True, "username": "learner"})
+
+    monkeypatch.setattr(diagnostics, "load_session", lambda path: _session_data())
+    monkeypatch.setattr(diagnostics, "LeetCodeClient", DoctorClient)
+    monkeypatch.setattr(diagnostics, "diagnose_session", lambda path: _check("session"))
+    monkeypatch.setattr(
+        diagnostics,
+        "diagnose_solution",
+        lambda *args, **kwargs: pytest.fail("solution must be skipped"),
+    )
+
+    report = diagnostics.get_doctor_report(user_paths)
+
+    checks = {check.name: check for check in report.checks}
+    assert checks["workspace"].status is DoctorStatus.WARNING
+    assert checks["solution"].status is DoctorStatus.WARNING
+    assert report.ok
+
+
+def test_get_doctor_report_requires_workspace_when_running_solution(
+    monkeypatch,
+    user_paths,
+) -> None:
+    class DoctorClient(FakeClient):
+        def user_status(self) -> ClientResult:
+            return ClientResult(data={"isSignedIn": True, "username": "learner"})
+
+    monkeypatch.setattr(diagnostics, "load_session", lambda path: _session_data())
+    monkeypatch.setattr(diagnostics, "LeetCodeClient", DoctorClient)
+    monkeypatch.setattr(diagnostics, "diagnose_session", lambda path: _check("session"))
+
+    report = diagnostics.get_doctor_report(user_paths, run_solution=True)
+
+    checks = {check.name: check for check in report.checks}
+    assert checks["workspace"].status is DoctorStatus.FAIL
+    assert not report.ok

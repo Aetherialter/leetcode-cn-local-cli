@@ -5,17 +5,17 @@ from leetcode_local_cli.config import (
     WorkspaceInitResult,
     initialize_workspace,
     load_user_config,
-    resolve_app_paths,
+    resolve_workspace_paths,
 )
-from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.paths import WorkspacePaths
 from leetcode_local_cli.use_cases.common import UseCaseError
 
 
-def resolve_existing_workspace(config_file: Path) -> AppPaths | None:
+def resolve_existing_workspace(config_file: Path) -> WorkspacePaths | None:
     try:
         if load_user_config(config_file) is None:
             return None
-        return resolve_app_paths(config_file)
+        return resolve_workspace_paths(config_file)
     except ConfigError as exc:
         raise UseCaseError(str(exc)) from exc
 

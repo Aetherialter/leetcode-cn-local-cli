@@ -43,7 +43,7 @@ def login(
         ),
     ] = None,
 ) -> None:
-    paths = common.require_app_paths()
+    paths = common.get_user_paths()
     if devtools_port is not None and browser is BrowserKind.AUTO:
         raise BadParameter(
             "--devtools-port 必须与 --browser chrome 或 --browser edge 一起使用",
@@ -85,7 +85,7 @@ def _login_manually(session_file: Path) -> None:
 
 def status() -> None:
     try:
-        user_status = get_user_status(common.require_app_paths())
+        user_status = get_user_status(common.get_user_paths())
     except UseCaseError as exc:
         common.exit_for_use_case_error(exc)
     username = user_status.get("username", "未知用户")
@@ -95,7 +95,7 @@ def status() -> None:
 def profile() -> None:
     try:
         with loading("正在获取账户信息..."):
-            account_profile = get_account_profile(common.require_app_paths())
+            account_profile = get_account_profile(common.get_user_paths())
     except UseCaseError as exc:
         common.exit_for_use_case_error(exc)
     render_profile(account_profile)

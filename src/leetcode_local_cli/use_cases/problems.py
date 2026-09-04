@@ -1,5 +1,5 @@
 from leetcode_local_cli.client import ClientErrorKind, LeetCodeClient
-from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.paths import UserPaths, WorkspacePaths
 from leetcode_local_cli.problem import (
     ProblemDetail,
     ProblemSummary,
@@ -63,7 +63,7 @@ def _validate_show_options(limit: int, skip: int) -> None:
 
 
 def get_problem_summaries(
-    paths: AppPaths,
+    paths: UserPaths,
     limit: int = 50,
     skip: int = 0,
     *,
@@ -86,7 +86,7 @@ def get_problem_summaries(
 
 
 def get_problem_detail_by_question_id(
-    paths: AppPaths,
+    paths: UserPaths,
     question_id: str,
     *,
     progress: Progress = no_progress,
@@ -108,7 +108,7 @@ def get_problem_detail_by_question_id(
         return normalize_problem_detail(problem_detail_data.data)
 
 
-def write_problem_solution(paths: AppPaths, problem: ProblemDetail) -> None:
+def write_problem_solution(paths: WorkspacePaths, problem: ProblemDetail) -> None:
     if not problem.python_code:
         raise UseCaseError("题目未提供 Python3 代码模板，无法生成 solution.py")
     if (

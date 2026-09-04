@@ -4,7 +4,7 @@ import math
 from time import monotonic, sleep
 
 from leetcode_local_cli.client import ClientErrorKind, ClientResult, LeetCodeClient
-from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.paths import AppPaths, UserPaths
 from leetcode_local_cli.submission import (
     SubmissionCheck,
     SubmissionJudged,
@@ -49,12 +49,12 @@ def submit_current_solution(
     policy = SubmissionPollingPolicy(wait_timeout_seconds=wait_timeout_seconds)
     _validate_polling_policy(policy)
     try:
-        metadata, code = parse_solution_submission(paths.solution_file)
+        metadata, code = parse_solution_submission(paths.workspace.solution_file)
     except WorkspaceError as exc:
         raise UseCaseError(str(exc)) from exc
     if on_target is not None:
         on_target(metadata)
-    cookies = load_cookies_from_session(paths)
+    cookies = load_cookies_from_session(paths.user)
     with LeetCodeClient(cookies) as client:
         submission_result = client.submit_solution(
             metadata.title_slug,
@@ -72,7 +72,7 @@ def submit_current_solution(
 
 
 def check_existing_submission(
-    paths: AppPaths,
+    paths: UserPaths,
     submission_id: int,
 ) -> SubmissionOutcome:
     if (

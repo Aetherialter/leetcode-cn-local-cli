@@ -17,18 +17,19 @@
 
 - 浏览器自动登录会先显示 Chrome/Edge 的 Remote debugging 设置地址，并明确要求勾选 **Allow remote debugging for this browser instance**；自动打开页面未显示或授权端点不可用时，也会提示用户手动打开对应地址。
 - README 已记录 Chrome 的 `chrome://inspect/#remote-debugging` 和 Edge 的 `edge://inspect/#remote-debugging` 首次授权步骤。
+- Session 已从工作区迁移到平台用户状态目录；账号、题目查询、提交结果查询和默认诊断不再依赖工作区初始化。
+- 工作区 marker 已迁移为 local-only 的 `.leetcode_local_cli/workspace.toml`；内测阶段不兼容旧 Session 和旧 marker。
 
 ## 当前优先级
 
-1. **工作区标记语义**：决定 `.leetcode-local-cli.toml` 应共享、忽略还是迁移；未确认前不修改用户 `.gitignore`。
-2. **日常 CI**：普通 push/PR 运行 Ruff、Pyright 和 pytest，标签工作流继续负责三平台发布门禁。
-3. **结构化边界**：继续替换账号结果的裸字典，并细化 `UseCaseError` 类型。
+1. **日常 CI**：普通 push/PR 运行 Ruff、Pyright 和 pytest，标签工作流继续负责三平台发布门禁。
+2. **结构化边界**：继续替换账号结果的裸字典，并细化 `UseCaseError` 类型。
 
 低优先级候选：Broken Pipe、合法空分页、编辑器配置、Python 小版本范围、`ListNode`/`TreeNode` 转换和依赖审计。
 
 ## 已知风险
 
-- Session 仍是工作区中的明文 JSON。
+- Session 已离开工作区，但仍是用户本地状态目录中的明文 JSON。
 - 本地 worker 可限制异常和超时，但不是安全沙箱。
 - 稳定 Python API 和站点适配器尚未形成。
 - 本次 Windows 验收中，在 Zed 进程运行时有一次切题写入于 `os.replace` 阶段返回 `WinError 5`；旧解法得到保留，随后相同原子替换连续 3 次成功，未形成稳定复现。
@@ -40,6 +41,8 @@
 核心边界稳定后，再评估国际站、最小 Python API、系统秘密存储和编辑器集成。这些方向不是当前排期，也不授权预先引入数据库、Web、AI 或多语言运行时。
 
 ## 最近验证
+
+2026-09-04，用户状态/工作区路径拆分、初始化前命令和新 marker 通过完整 Ruff format、Ruff lint、Pyright 和 Windows 测试（346 passed、14 skipped），并通过 `uv build --no-sources`、`lc --version`、`lc --help` 与隔离的无工作区 `lc profile` Smoke Test。自动化验证未读取真实 Cookie、执行真实登录或远程提交。
 
 2026-09-04，未发布的浏览器登录提示和文档变更通过完整 Ruff format、Ruff lint、Pyright 和 Windows 测试（335 passed、13 skipped）。自动化验证未执行真实 Cookie 读取或远程提交。
 

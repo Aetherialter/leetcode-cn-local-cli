@@ -8,7 +8,7 @@ from leetcode_local_cli.auth import (
 )
 from leetcode_local_cli.client import ClientErrorKind
 from leetcode_local_cli.doctor import DoctorStatus, diagnose_session
-from leetcode_local_cli.paths import AppPaths
+from leetcode_local_cli.paths import UserPaths
 
 
 Progress = Callable[[str], AbstractContextManager[None]]
@@ -55,7 +55,7 @@ def client_error_message(kind: ClientErrorKind | None) -> str:
             return "未知客户端错误"
 
 
-def load_cookies_from_session(paths: AppPaths) -> dict[str, str]:
+def load_cookies_from_session(paths: UserPaths) -> dict[str, str]:
     session_check = diagnose_session(paths.session_file)
     if session_check.status is DoctorStatus.FAIL:
         raise UseCaseError(

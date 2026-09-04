@@ -15,6 +15,7 @@ from leetcode_local_cli.workspace import (
 SESSION_CHECK_NAME = "session"
 CONNECTIVITY_CHECK_NAME = "connectivity"
 AUTHENTICATION_CHECK_NAME = "authentication"
+WORKSPACE_CHECK_NAME = "workspace"
 SOLUTION_CHECK_NAME = "solution"
 SOLUTION_RUN_TIMEOUT_SECONDS = 10
 
