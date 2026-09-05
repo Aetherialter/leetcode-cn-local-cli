@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from leetcode_local_cli.paths import (
+from leetcode_local_cli.storage.paths import (
     AppPaths,
     UserPaths,
     WorkspacePaths,
@@ -222,11 +222,11 @@ def test_runtime_modules_do_not_capture_current_directory_at_import() -> None:
     source_root = Path(__file__).resolve().parents[1] / "src" / "leetcode_local_cli"
 
     for module_name in (
-        "auth.py",
-        "browser.py",
-        "workspace.py",
-        "config.py",
-        "paths.py",
+        "integrations/devtools.py",
+        "integrations/browser.py",
+        "storage/solution.py",
+        "storage/config.py",
+        "storage/paths.py",
     ):
         source = (source_root / module_name).read_text(encoding="utf-8")
         assert "Path.cwd()" not in source

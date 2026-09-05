@@ -1,24 +1,14 @@
 import httpx
 import pytest
 
-from leetcode_local_cli.client import (
-    BASE_URL,
-    ClientErrorKind,
-    ClientResult,
-    LeetCodeClient,
-)
-from leetcode_local_cli.submission import SubmissionCheck
+from leetcode_local_cli.integrations.leetcode import LeetCodeClient
+from leetcode_local_cli.models.account import UserStatus
+from leetcode_local_cli.models.result import ClientErrorKind, ClientSuccess
+from leetcode_local_cli.models.submission import SubmissionCheck
 
 
 def _client_with_transport(handler, cookies=None) -> LeetCodeClient:
-    client = LeetCodeClient(cookies)
-    client.client.close()
-    client.client = httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        cookies=cookies,
-    )
-    return client
+    return LeetCodeClient(cookies, transport=httpx.MockTransport(handler))
 
 
 @pytest.mark.parametrize(
@@ -94,7 +84,7 @@ def test_user_status_returns_valid_status_object() -> None:
         result = client.user_status()
 
     assert result.ok
-    assert result.data == {"isSignedIn": False}
+    assert result.data == UserStatus(False)
 
 
 @pytest.mark.parametrize(
@@ -117,6 +107,41 @@ def test_user_status_rejects_invalid_authentication_fields(status) -> None:
         result = client.user_status()
 
     assert result.error is ClientErrorKind.INVALID_RESPONSE
+
+
+def test_problem_list_returns_immutable_page_and_forwards_pagination() -> None:
+    import json
+
+    def handler(request):
+        variables = json.loads(request.content)["variables"]
+        assert variables["limit"] == 2 and variables["skip"] == 100
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "problemsetQuestionList": {
+                        "total": 101,
+                        "questions": [
+                            {
+                                "frontendQuestionId": "101",
+                                "title": "Example",
+                                "titleSlug": "example",
+                                "difficulty": "Easy",
+                                "paidOnly": False,
+                                "topicTags": [{"name": "Array"}],
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+    with _client_with_transport(handler) as client:
+        result = client.problem_list(limit=2, skip=100)
+    assert isinstance(result, ClientSuccess)
+    assert result.data.total == 101
+    assert isinstance(result.data.questions, tuple)
+    assert result.data.questions[0].tags == ("Array",)
 
 
 @pytest.mark.parametrize(
@@ -259,13 +284,10 @@ def test_client_methods_reject_non_dict_success_data(
     args,
     monkeypatch,
 ) -> None:
-    with LeetCodeClient({"csrftoken": "csrf-value"}) as client:
-        monkeypatch.setattr(
-            client,
-            "_request_json",
-            lambda *args, **kwargs: ClientResult(data=None),
-        )
-
+    with _client_with_transport(
+        lambda request: httpx.Response(200, json=[]),
+        cookies={"csrftoken": "csrf-value"},
+    ) as client:
         result = getattr(client, method_name)(*args)
 
     assert result.error is ClientErrorKind.INVALID_RESPONSE

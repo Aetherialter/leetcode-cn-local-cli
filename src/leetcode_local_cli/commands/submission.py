@@ -4,13 +4,13 @@ from typing import Annotated
 from typer import Argument, BadParameter, Exit, Option
 
 from leetcode_local_cli.commands import common
-from leetcode_local_cli.submission import SubmissionJudged
-from leetcode_local_cli.ui import (
+from leetcode_local_cli.commands.rendering import (
     render_submission_result,
     render_submission_submitted,
     render_submission_target,
 )
-from leetcode_local_cli.use_cases.common import UseCaseError
+from leetcode_local_cli.models.submission import SubmissionJudged
+from leetcode_local_cli.use_cases.errors import UseCaseError
 from leetcode_local_cli.use_cases.submission import (
     DEFAULT_SUBMISSION_WAIT_TIMEOUT_SECONDS,
     check_existing_submission,

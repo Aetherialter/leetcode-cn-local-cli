@@ -18,11 +18,12 @@
 
 # Architecture Rules
 
-- 保持 `cli.py → commands/ → use_cases/ → core modules` 单向依赖。
+- 保持 `cli.py → commands/ → use_cases/ → integrations / storage / execution → models` 的依赖方向；底层不得反向导入上层。
 - `cli.py` 只创建 Typer 应用、处理全局回调并注册命令。
 - `commands/` 负责参数、终端输入、Rich 渲染和退出码，不承载可复用业务规则。
-- `use_cases/` 负责编排业务流程，不得导入 Typer、Rich、`ui.py`、`commands` 或 `cli`。进度和阶段性输出通过窄回调注入。
-- `auth.py`、`browser.py`、`client.py`、`workspace.py` 等底层模块暂时保持扁平；只有真实子域包含多个内聚模块时才拆包。
+- `use_cases/` 负责编排业务流程，不得导入 Typer、Rich、`commands` 或 `cli`。进度和阶段性输出通过窄回调注入；Rich 渲染集中在 `commands/rendering.py`。
+- `models/` 只保存模型与纯规则；`storage/` 管文件与路径；`integrations/` 管 HTTP、浏览器和编辑器；`execution/` 管参数协议和 worker。初始化与跨资源恢复由用例编排，不放回存储层。内测重构不保留旧根模块转发。
+- Session 只通过 `storage/session.py` 读取和校验；诊断消费同一次读取结果，不成为账号、题目或提交命令的前置依赖。
 - 路径必须由 `AppPaths` 或显式参数传递，不得在导入时捕获 `Path.cwd()`。
 - 新的稳定结果优先使用不可变类型；不得继续扩散裸 `dict`、无约束 `Any` 或传输层响应。
 - 用例错误通过项目异常或结构化结果表达，CLI 再映射中文文案和退出码；不得解析中文错误文本判断类型。
@@ -31,6 +32,8 @@
 
 - `solution.py`、配置和 Session 的写入必须拒绝符号链接、断链、目录、junction 和 reparse point，并保护旧文件不被失败写入破坏。
 - Cookie 不得写入日志、异常、测试 fixture、报告或 Git；真实登录和提交必须由维护者明确授权。
+- 携带凭据的 HTTP 请求只允许 `https://leetcode.cn:443`（可省略默认端口），拒绝 URL 用户信息和全部重定向；测试通过注入 transport 保留生产安全配置。
+- `init --repair` 必须显式指定工作区，损坏配置先同目录备份原始字节；不支持的版本、站点和不安全目标不得被自动修复。
 - 外部字符串只能按纯文本渲染，不得解释为 Rich markup、控制序列、Shell 命令或隐式链接。
 - 子进程使用参数数组，不使用 `shell=True`。本地 worker 不是安全沙箱，只能运行可信工作区代码。
 - 不提交缓存、构建产物、真实解法、Session、密钥、本机配置或与任务无关的用户改动。

@@ -1,10 +1,12 @@
 from leetcode_local_cli.commands import common
-from leetcode_local_cli.ui import (
+from leetcode_local_cli.commands.rendering import (
     loading,
     render_problem_detail,
     render_problem_list,
+    success,
+    warning,
 )
-from leetcode_local_cli.use_cases.common import UseCaseError
+from leetcode_local_cli.use_cases.errors import UseCaseError
 from leetcode_local_cli.use_cases.problems import (
     get_problem_detail_by_question_id,
     get_problem_summaries,
@@ -37,9 +39,9 @@ def show(limit: int = 50, skip: int = 0) -> None:
     render_problem_list(problem_summaries)
 
 
-def solve(question_id: str) -> None:
-    paths = common.require_app_paths()
+def solve(question_id: str, no_open: bool = False) -> None:
     try:
+        paths = common.require_app_paths()
         problem_detail = get_problem_detail_by_question_id(
             paths.user,
             question_id,
@@ -49,6 +51,11 @@ def solve(question_id: str) -> None:
         common.exit_for_use_case_error(exc)
     render_problem_detail(problem_detail)
     try:
-        write_problem_solution(paths.workspace, problem_detail)
+        result = write_problem_solution(
+            paths.workspace, problem_detail, open_editor=not no_open
+        )
+        success(f"解法已保存：{result.path}")
+        if result.open_warning:
+            warning(result.open_warning)
     except UseCaseError as exc:
         common.exit_for_use_case_error(exc)

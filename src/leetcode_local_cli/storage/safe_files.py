@@ -1,7 +1,7 @@
 import os
-from pathlib import Path
 import stat
 import tempfile
+from pathlib import Path
 
 
 class SafeFileError(OSError):
@@ -152,6 +152,17 @@ def atomic_write_text(
     mode: int = 0o644,
 ) -> None:
     """Atomically replace a regular UTF-8 text file using a sibling temp file."""
+    try:
+        encoded = content.encode("utf-8")
+    except UnicodeError as exc:
+        raise SafeFileError(f"无法写入{label}") from exc
+    atomic_write_bytes(path, encoded, label=label, mode=mode)
+
+
+def atomic_write_bytes(
+    path: Path, content: bytes, *, label: str, mode: int = 0o600
+) -> None:
+    """Preserve exact bytes during configuration recovery."""
     validate_regular_file_target(path, label=label)
     validate_directory_target(path.parent, label=f"{label}所在目录")
 
@@ -164,7 +175,7 @@ def atomic_write_text(
             dir=path.parent,
         )
         temporary_path = Path(temporary_name)
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as file:
+        with os.fdopen(descriptor, "wb") as file:
             descriptor = -1
             file.write(content)
             file.flush()
@@ -175,8 +186,6 @@ def atomic_write_text(
         validate_regular_file_target(path, label=label)
         os.replace(temporary_path, path)
         temporary_path = None
-        if os.name != "nt":
-            os.chmod(path, mode)
     except (OSError, UnicodeError) as exc:
         raise SafeFileError(f"无法写入{label}") from exc
     finally:
@@ -190,3 +199,23 @@ def atomic_write_text(
                 temporary_path.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+def create_bytes_file(path: Path, content: bytes, *, label: str) -> None:
+    validate_regular_file_target(path, label=label)
+    validate_directory_target(path.parent, label=f"{label}所在目录")
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except OSError as exc:
+        raise SafeFileError(f"无法创建{label}") from exc
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+    except OSError as exc:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise SafeFileError(f"无法写入{label}") from exc

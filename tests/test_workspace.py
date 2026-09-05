@@ -5,12 +5,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from leetcode_local_cli import workspace
-from leetcode_local_cli.safe_files import SafeFileError, is_windows_reparse_point
-from leetcode_local_cli.workspace import (
+from leetcode_local_cli.models.solution import (
     ProblemMetadata,
     SolutionFileStatus,
     WorkspaceError,
+)
+from leetcode_local_cli.storage import solution as workspace
+from leetcode_local_cli.storage.safe_files import (
+    SafeFileError,
+    is_windows_reparse_point,
 )
 
 
@@ -95,8 +98,6 @@ def test_write_solution_file_creates_or_overwrites_regular_file(
     solution_file = tmp_path / "solution.py"
     if existing_content is not None:
         solution_file.write_text(existing_content, encoding="utf-8")
-    opened_paths = []
-    monkeypatch.setattr(workspace, "open_path", opened_paths.append)
 
     workspace.write_solution_file(
         solution_file,
@@ -107,7 +108,7 @@ def test_write_solution_file_creates_or_overwrites_regular_file(
     content = solution_file.read_text(encoding="utf-8")
     assert existing_content is None or existing_content not in content
     assert "class Solution:\n    pass" in content
-    assert opened_paths == [solution_file]
+    assert not hasattr(workspace, "open_path")
 
 
 @pytest.mark.parametrize("target_exists", [True, False])
@@ -124,11 +125,6 @@ def test_write_solution_file_rejects_existing_and_broken_symlinks(
         solution_file.symlink_to(target)
     except OSError as exc:
         pytest.skip(f"symbolic links are unavailable: {exc}")
-    monkeypatch.setattr(
-        workspace,
-        "open_path",
-        lambda path: pytest.fail("rejected target must not be opened"),
-    )
 
     with pytest.raises(WorkspaceError, match="符号链接或断链"):
         workspace.write_solution_file(
@@ -155,11 +151,6 @@ def test_write_solution_file_rejects_directory_symlink(
         solution_file.symlink_to(target_directory, target_is_directory=True)
     except OSError as exc:
         pytest.skip(f"symbolic links are unavailable: {exc}")
-    monkeypatch.setattr(
-        workspace,
-        "open_path",
-        lambda path: pytest.fail("rejected target must not be opened"),
-    )
 
     with pytest.raises(WorkspaceError, match="符号链接或断链"):
         workspace.write_solution_file(
@@ -175,11 +166,6 @@ def test_write_solution_file_rejects_directory_symlink(
 def test_write_solution_file_rejects_directory(tmp_path, monkeypatch) -> None:
     solution_file = tmp_path / "solution.py"
     solution_file.mkdir()
-    monkeypatch.setattr(
-        workspace,
-        "open_path",
-        lambda path: pytest.fail("rejected target must not be opened"),
-    )
 
     with pytest.raises(WorkspaceError, match="是目录"):
         workspace.write_solution_file(
@@ -220,11 +206,6 @@ def test_write_solution_file_rejects_windows_junction(
     if result.returncode:
         pytest.skip(f"could not create test junction: {result.stderr}")
     assert junction.is_junction()
-    monkeypatch.setattr(
-        workspace,
-        "open_path",
-        lambda path: pytest.fail("rejected target must not be opened"),
-    )
 
     with pytest.raises(WorkspaceError, match="reparse point"):
         workspace.write_solution_file(
@@ -246,11 +227,6 @@ def test_write_solution_file_wraps_write_errors(tmp_path, monkeypatch) -> None:
         lambda *args, **kwargs: (_ for _ in ()).throw(
             SafeFileError("无法写入 solution.py")
         ),
-    )
-    monkeypatch.setattr(
-        workspace,
-        "open_path",
-        lambda path: pytest.fail("failed write must not be opened"),
     )
 
     with pytest.raises(WorkspaceError, match="无法写入 solution.py"):

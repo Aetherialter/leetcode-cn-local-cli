@@ -1,41 +1,45 @@
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
-from types import SimpleNamespace
 from contextlib import nullcontext
+from pathlib import Path
 
 import pytest
 from click import unstyle
 from typer.testing import CliRunner
 
 from leetcode_local_cli import cli
-from leetcode_local_cli.browser import BrowserDevToolsEndpoint, BrowserKind
-from leetcode_local_cli.client import ClientErrorKind
 from leetcode_local_cli.commands import account as account_commands
 from leetcode_local_cli.commands import common as command_common
 from leetcode_local_cli.commands import problems as problem_commands
 from leetcode_local_cli.commands import setup as setup_commands
 from leetcode_local_cli.commands import submission as submission_commands
 from leetcode_local_cli.commands import testing as testing_commands
-from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
-from leetcode_local_cli.problem import ProblemDetail
-from leetcode_local_cli.paths import AppPaths
-from leetcode_local_cli.submission import (
+from leetcode_local_cli.integrations.browser import BrowserDevToolsEndpoint, BrowserKind
+from leetcode_local_cli.models.account import UserStatus
+from leetcode_local_cli.models.diagnostics import (
+    DoctorCheck,
+    DoctorReport,
+    DoctorStatus,
+)
+from leetcode_local_cli.models.problem import ProblemDetail
+from leetcode_local_cli.models.result import ClientErrorKind, ClientSuccess
+from leetcode_local_cli.models.session import Credentials, Session
+from leetcode_local_cli.models.solution import (
+    SolutionFileInspection,
+    SolutionFileStatus,
+)
+from leetcode_local_cli.models.submission import (
     SubmissionJudged,
     SubmissionPending,
     SubmissionPollingFailed,
     SubmissionTimedOut,
 )
+from leetcode_local_cli.storage.paths import AppPaths
 from leetcode_local_cli.use_cases import local_test as local_test_use_case
 from leetcode_local_cli.use_cases import login as login_use_case
 from leetcode_local_cli.use_cases.common import UseCaseError
-from leetcode_local_cli.workspace import (
-    SolutionFileInspection,
-    SolutionFileStatus,
-)
-
 
 runner = CliRunner()
 login_reporter = login_use_case.LoginReporter(
@@ -259,7 +263,7 @@ def test_user_scope_commands_do_not_require_workspace_resolution(
     monkeypatch.setattr(
         account_commands,
         "get_user_status",
-        lambda paths: {"username": "learner"},
+        lambda paths: UserStatus(True, "learner"),
     )
     monkeypatch.setattr(account_commands, "get_account_profile", lambda paths: {})
     monkeypatch.setattr(account_commands, "render_profile", lambda profile: None)
@@ -326,9 +330,7 @@ def test_login_uses_explicit_chrome_devtools_port_without_manual_fallback(
             return False
 
         def user_status(self):
-            return SimpleNamespace(
-                ok=True, data={"isSignedIn": True, "username": "learner"}
-            )
+            return ClientSuccess(UserStatus(True, "learner"))
 
     validated = []
     monkeypatch.setattr(
@@ -360,12 +362,11 @@ def test_login_uses_explicit_chrome_devtools_port_without_manual_fallback(
     assert validated == [(9222, BrowserKind.CHROME)]
     assert saved_sessions == [
         (
-            {
-                "site": "leetcode.cn",
-                "source": "Chrome DevTools",
-                "username": "learner",
-                "cookies": cookies,
-            },
+            Session(
+                Credentials("session-value", "csrf-value"),
+                username="learner",
+                source="Chrome DevTools",
+            ),
             configured_app_paths.user.session_file,
         )
     ]
@@ -785,7 +786,7 @@ def test_solve_command_reports_rejected_workspace_target(monkeypatch) -> None:
         title="Two Sum",
         title_slug="two-sum",
         difficulty="Easy",
-        tags=["Array"],
+        tags=("Array",),
         content_html="<p>content</p>",
         python_code="class Solution:\n    pass",
     )
@@ -798,7 +799,7 @@ def test_solve_command_reports_rejected_workspace_target(monkeypatch) -> None:
     monkeypatch.setattr(
         problem_commands,
         "write_problem_solution",
-        lambda paths, problem: (_ for _ in ()).throw(
+        lambda paths, problem, *, open_editor: (_ for _ in ()).throw(
             UseCaseError("solution.py 是符号链接或断链，已拒绝写入")
         ),
     )

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from leetcode_local_cli import safe_files
-from leetcode_local_cli.safe_files import SafeFileError
+from leetcode_local_cli.storage import safe_files as safe_files
+from leetcode_local_cli.storage.safe_files import SafeFileError
 
 
 @pytest.mark.parametrize("existing_content", (None, "old content"))

@@ -1,10 +1,7 @@
 import pytest
 
-from leetcode_local_cli.problem import (
-    QuestionIdError,
-    normalize_problem_detail,
-    parse_question_id,
-)
+from leetcode_local_cli.integrations.problem_parser import normalize_problem_detail
+from leetcode_local_cli.models.problem import QuestionIdError, parse_question_id
 
 
 @pytest.mark.parametrize(
@@ -63,5 +60,5 @@ def test_normalize_problem_detail_tolerates_malformed_optional_lists() -> None:
         }
     )
 
-    assert detail.tags == []
+    assert detail.tags == ()
     assert detail.python_code is None

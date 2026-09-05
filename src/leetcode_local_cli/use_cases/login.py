@@ -4,16 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic, sleep
 
-from leetcode_local_cli.auth import (
-    DevToolsApprovalRejected,
-    DevToolsConnectionUnavailable,
-    DevToolsError,
-    SessionFileError,
-    get_cookies_from_browser_endpoint,
-    get_cookies_from_devtools,
-    save_session,
-)
-from leetcode_local_cli.browser import (
+from leetcode_local_cli.integrations.browser import (
     BROWSER_LOGIN_TIMEOUT_SECONDS,
     BrowserAuthorizationPending,
     BrowserDevToolsEndpoint,
@@ -27,9 +18,19 @@ from leetcode_local_cli.browser import (
     read_browser_devtools_endpoint,
     validate_devtools_browser,
 )
-from leetcode_local_cli.client import ClientErrorKind, LeetCodeClient
-from leetcode_local_cli.use_cases.common import UseCaseError, client_error_message
-
+from leetcode_local_cli.integrations.devtools import (
+    DevToolsApprovalRejected,
+    DevToolsConnectionUnavailable,
+    DevToolsError,
+    get_cookies_from_browser_endpoint,
+    get_cookies_from_devtools,
+)
+from leetcode_local_cli.integrations.leetcode import LeetCodeClient
+from leetcode_local_cli.models.result import ClientErrorKind, ClientFailure
+from leetcode_local_cli.models.session import Session, SessionFileError
+from leetcode_local_cli.storage.session import credentials_from_mapping, save_session
+from leetcode_local_cli.use_cases.common import client_error_message, session_error
+from leetcode_local_cli.use_cases.errors import ErrorCode, UseCaseError
 
 BROWSER_COOKIE_POLL_INTERVAL_SECONDS = 0.5
 BROWSER_WINDOW_READY_DELAY_SECONDS = 1.0
@@ -84,29 +85,35 @@ def validate_and_save_login(
     source: str,
     session_file: Path,
 ) -> bool:
+    try:
+        credentials = credentials_from_mapping(cookies)
+    except SessionFileError as exc:
+        raise session_error(exc) from None
     with LeetCodeClient(cookies) as client:
         status_result = client.user_status()
+        if isinstance(status_result, ClientFailure):
+            raise UseCaseError(
+                client_error_message(status_result.error), code=ErrorCode.CLIENT
+            )
         status = status_result.data
-        if not status_result.ok:
-            raise UseCaseError(client_error_message(status_result.error))
-        if isinstance(status, dict) and status.get("isSignedIn"):
-            username = status.get("username")
+        if status.signed_in:
+            username = status.username
             if not isinstance(username, str) or not username:
                 raise UseCaseError(
-                    client_error_message(ClientErrorKind.INVALID_RESPONSE)
+                    client_error_message(ClientErrorKind.INVALID_RESPONSE),
+                    code=ErrorCode.CLIENT,
                 )
             try:
                 save_session(
-                    {
-                        "site": "leetcode.cn",
-                        "source": source,
-                        "username": username,
-                        "cookies": cookies,
-                    },
+                    Session(
+                        credentials=credentials,
+                        username=username,
+                        source=source,
+                    ),
                     session_file,
                 )
             except SessionFileError as exc:
-                raise UseCaseError(str(exc)) from exc
+                raise session_error(exc) from None
             return True
         return False
 

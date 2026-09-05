@@ -1,33 +1,13 @@
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 
-from leetcode_local_cli.auth import (
-    REQUIRED_COOKIE_NAMES,
-    SessionFileError,
-    load_session,
-)
-from leetcode_local_cli.client import ClientErrorKind
-from leetcode_local_cli.doctor import DoctorStatus, diagnose_session
-from leetcode_local_cli.paths import UserPaths
-
+from leetcode_local_cli.models.result import ClientErrorKind
+from leetcode_local_cli.models.session import SessionErrorKind, SessionFileError
+from leetcode_local_cli.storage.paths import UserPaths
+from leetcode_local_cli.storage.session import load_session
+from leetcode_local_cli.use_cases.errors import ErrorCode, UseCaseError
 
 Progress = Callable[[str], AbstractContextManager[None]]
-
-
-class UseCaseError(RuntimeError):
-    """A user-actionable application error independent of CLI rendering."""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        suggestion: str | None = None,
-        warning_only: bool = False,
-    ) -> None:
-        super().__init__(message)
-        self.message = message
-        self.suggestion = suggestion
-        self.warning_only = warning_only
 
 
 def no_progress(message: str) -> AbstractContextManager[None]:
@@ -37,6 +17,10 @@ def no_progress(message: str) -> AbstractContextManager[None]:
 
 def client_error_message(kind: ClientErrorKind | None) -> str:
     match kind:
+        case ClientErrorKind.REDIRECT:
+            return "LeetCode 接口返回重定向，已停止请求，请检查项目更新"
+        case ClientErrorKind.UNSAFE_TARGET:
+            return "请求目标不属于允许的 LeetCode HTTPS 地址，已拒绝发送"
         case ClientErrorKind.TIMEOUT:
             return "LeetCode 请求超时，请稍后重试"
         case ClientErrorKind.NETWORK:
@@ -55,32 +39,28 @@ def client_error_message(kind: ClientErrorKind | None) -> str:
             return "未知客户端错误"
 
 
+def session_error(exc: SessionFileError) -> UseCaseError:
+    messages = {
+        SessionErrorKind.MISSING: "未找到 Session 文件",
+        SessionErrorKind.READ_ERROR: "无法读取 Session 文件",
+        SessionErrorKind.INVALID_ENCODING: "Session 文件不是有效的 UTF-8 编码",
+        SessionErrorKind.INVALID_JSON: "Session 文件不是有效的 JSON",
+        SessionErrorKind.INVALID_STRUCTURE: "Session 文件结构无效",
+        SessionErrorKind.WRITE_ERROR: "无法保存 Session 文件",
+    }
+    message = messages.get(exc.kind)
+    if message is None:
+        message = "缺少或无效的 Cookie：" + "、".join(exc.missing_cookie_names)
+    code = ErrorCode.SESSION_INVALID
+    if exc.kind is SessionErrorKind.MISSING:
+        code = ErrorCode.SESSION_MISSING
+    elif exc.kind in {SessionErrorKind.READ_ERROR, SessionErrorKind.WRITE_ERROR}:
+        code = ErrorCode.SESSION_IO
+    return UseCaseError(message, code=code, suggestion="请执行 lc login 重新生成登录态")
+
+
 def load_cookies_from_session(paths: UserPaths) -> dict[str, str]:
-    session_check = diagnose_session(paths.session_file)
-    if session_check.status is DoctorStatus.FAIL:
-        raise UseCaseError(
-            session_check.message,
-            suggestion=session_check.suggestion,
-        )
     try:
-        session = load_session(paths.session_file)
+        return load_session(paths.session_file).credentials.as_cookies()
     except SessionFileError as exc:
-        raise UseCaseError(str(exc)) from exc
-    if not isinstance(session, dict):
-        raise UseCaseError(
-            "未找到有效登录态，请先执行 lc login",
-            warning_only=True,
-        )
-    cookies = session.get("cookies")
-    if not isinstance(cookies, dict):
-        raise UseCaseError("Session 文件结构无效，请重新执行 lc login")
-    valid_cookies: dict[str, str] = {}
-    for name in REQUIRED_COOKIE_NAMES:
-        value = cookies.get(name)
-        if not isinstance(value, str) or not value:
-            raise UseCaseError(
-                f"缺少或无效的 Cookie：{name}",
-                suggestion="请重新执行 lc login",
-            )
-        valid_cookies[name] = value
-    return valid_cookies
+        raise session_error(exc) from None

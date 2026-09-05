@@ -1,26 +1,26 @@
+from getpass import getpass
 from pathlib import Path
 from typing import Annotated
 
 from typer import BadParameter, Exit, Option
 
-from leetcode_local_cli.auth import get_cookies_from_input
-from leetcode_local_cli.browser import BrowserKind
 from leetcode_local_cli.commands import common
-from leetcode_local_cli.ui import (
+from leetcode_local_cli.commands.rendering import (
     info,
     loading,
     render_profile,
     success,
     warning,
 )
+from leetcode_local_cli.integrations.browser import BrowserKind
+from leetcode_local_cli.integrations.devtools import parse_cookie_header
 from leetcode_local_cli.use_cases.account import get_account_profile, get_user_status
-from leetcode_local_cli.use_cases.common import UseCaseError
+from leetcode_local_cli.use_cases.errors import UseCaseError
 from leetcode_local_cli.use_cases.login import (
     LoginReporter,
     try_automatic_login,
     validate_and_save_login,
 )
-
 
 LOGIN_REPORTER = LoginReporter(info=info, warning=warning, loading=loading)
 
@@ -88,7 +88,7 @@ def status() -> None:
         user_status = get_user_status(common.get_user_paths())
     except UseCaseError as exc:
         common.exit_for_use_case_error(exc)
-    username = user_status.get("username", "未知用户")
+    username = user_status.username or "未知用户"
     success(f"在线状态: 当前账号 {username}")
 
 
@@ -99,3 +99,7 @@ def profile() -> None:
     except UseCaseError as exc:
         common.exit_for_use_case_error(exc)
     render_profile(account_profile)
+
+
+def get_cookies_from_input() -> dict[str, str] | None:
+    return parse_cookie_header(getpass("请粘贴 Cookie（输入内容不会回显）：\n"))

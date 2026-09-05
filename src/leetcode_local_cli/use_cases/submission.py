@@ -1,11 +1,12 @@
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
-import math
 from time import monotonic, sleep
 
-from leetcode_local_cli.client import ClientErrorKind, ClientResult, LeetCodeClient
-from leetcode_local_cli.paths import AppPaths, UserPaths
-from leetcode_local_cli.submission import (
+from leetcode_local_cli.integrations.leetcode import LeetCodeClient
+from leetcode_local_cli.models.result import ClientErrorKind, ClientFailure
+from leetcode_local_cli.models.solution import ProblemMetadata, WorkspaceError
+from leetcode_local_cli.models.submission import (
     SubmissionCheck,
     SubmissionJudged,
     SubmissionOutcome,
@@ -13,17 +14,13 @@ from leetcode_local_cli.submission import (
     SubmissionPollingFailed,
     SubmissionTimedOut,
 )
+from leetcode_local_cli.storage.paths import AppPaths, UserPaths
+from leetcode_local_cli.storage.solution import parse_solution_submission
 from leetcode_local_cli.use_cases.common import (
-    UseCaseError,
     client_error_message,
     load_cookies_from_session,
 )
-from leetcode_local_cli.workspace import (
-    ProblemMetadata,
-    WorkspaceError,
-    parse_solution_submission,
-)
-
+from leetcode_local_cli.use_cases.errors import ErrorCode, UseCaseError
 
 DEFAULT_SUBMISSION_WAIT_TIMEOUT_SECONDS = 30.0
 DEFAULT_SUBMISSION_POLL_INTERVAL_SECONDS = 0.5
@@ -51,7 +48,7 @@ def submit_current_solution(
     try:
         metadata, code = parse_solution_submission(paths.workspace.solution_file)
     except WorkspaceError as exc:
-        raise UseCaseError(str(exc)) from exc
+        raise UseCaseError(str(exc), code=ErrorCode.SOLUTION) from exc
     if on_target is not None:
         on_target(metadata)
     cookies = load_cookies_from_session(paths.user)
@@ -61,11 +58,16 @@ def submit_current_solution(
             metadata.submit_question_id,
             code,
         )
-        if not submission_result.ok:
-            raise UseCaseError(client_error_message(submission_result.error))
+        if isinstance(submission_result, ClientFailure):
+            raise UseCaseError(
+                client_error_message(submission_result.error), code=ErrorCode.CLIENT
+            )
         submission_id = submission_result.data
         if not isinstance(submission_id, int) or isinstance(submission_id, bool):
-            raise UseCaseError(client_error_message(ClientErrorKind.INVALID_RESPONSE))
+            raise UseCaseError(
+                client_error_message(ClientErrorKind.INVALID_RESPONSE),
+                code=ErrorCode.CLIENT,
+            )
         if on_submitted is not None:
             on_submitted(submission_id)
         return _poll_submission(client, submission_id, policy)
@@ -87,7 +89,7 @@ def check_existing_submission(
             submission_id,
             timeout=DEFAULT_SUBMISSION_REQUEST_TIMEOUT_SECONDS,
         )
-    if not result.ok:
+    if isinstance(result, ClientFailure):
         return _polling_failure(submission_id, result.error)
     check = result.data
     if not isinstance(check, SubmissionCheck):
@@ -137,7 +139,7 @@ def _poll_submission(
             submission_id,
             timeout=min(policy.request_timeout_seconds, remaining),
         )
-        if not result.ok:
+        if isinstance(result, ClientFailure):
             if deadline - clock() <= 0:
                 return SubmissionTimedOut(
                     submission_id=submission_id,
@@ -197,7 +199,7 @@ def _outcome_from_check(
 
 
 def _transient_retry_delay(
-    result: ClientResult,
+    result: ClientFailure,
     policy: SubmissionPollingPolicy,
 ) -> float | None:
     if result.error in {ClientErrorKind.TIMEOUT, ClientErrorKind.NETWORK}:

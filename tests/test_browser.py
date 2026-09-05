@@ -1,10 +1,10 @@
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from leetcode_local_cli import browser
-from leetcode_local_cli.auth import DevToolsBrowserInfo
+from leetcode_local_cli.integrations import browser as browser
+from leetcode_local_cli.integrations.devtools import DevToolsBrowserInfo
 
 
 def test_find_chrome_executable_uses_known_windows_installation(tmp_path: Path) -> None:

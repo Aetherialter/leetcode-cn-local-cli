@@ -2,6 +2,8 @@
 
 项目通过 GitHub Actions、PyPI Trusted Publisher 和版本化 Release Notes 发布，不保存 PyPI Token。
 
+普通分支 push 和 PR 由 `ci.yml` 在 Linux、macOS、Windows 的 Python 3.12 上运行 Ruff、Pyright 和 pytest，只授予仓库读取权限，不发布。`release.yml` 继续单独处理版本标签；新增 CI 配置不等于三平台运行已通过。
+
 ## 一次性配置
 
 - GitHub `pypi` environment 建议设置 required reviewer。
@@ -30,6 +32,8 @@ uv run --isolated --no-project --with dist/*.tar.gz scripts/smoke_test.py
 ```
 
 PowerShell 使用 `$env:LEETCODE_LOCAL_CLI_EXPECTED_VERSION = (uv version --short)` 设置变量。
+
+两种产物的 smoke test 都会验证版本/帮助入口，在临时用户目录中初始化工作区并启动本地 worker，检查 JSON 输入输出。不读取真实 Session，不联网登录或提交。
 
 ## 发布
 

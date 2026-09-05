@@ -2,19 +2,16 @@ from pathlib import Path
 
 import pytest
 
-from leetcode_local_cli.local_testing import (
+from leetcode_local_cli.execution.protocol import (
     LocalTestInputError,
     decode_arguments,
     encode_arguments,
     parse_parameter_assignments,
 )
-from leetcode_local_cli.workspace import (
-    LocalExecutionStatus,
-    LocalExecutionWorker,
-    ProblemMetadata,
-    WorkspaceError,
-    build_solution_content,
-)
+from leetcode_local_cli.execution.worker import LocalExecutionWorker
+from leetcode_local_cli.models.execution import LocalExecutionStatus
+from leetcode_local_cli.models.solution import ProblemMetadata, WorkspaceError
+from leetcode_local_cli.storage.solution import build_solution_content
 
 
 def _write_solution(path: Path, content: str) -> None:

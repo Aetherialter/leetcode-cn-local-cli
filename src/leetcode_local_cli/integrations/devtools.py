@@ -1,10 +1,6 @@
 import json
 import math
-import os
 from dataclasses import dataclass
-from enum import Enum
-from getpass import getpass
-from pathlib import Path
 from time import monotonic, sleep
 from urllib.parse import urlsplit
 
@@ -12,16 +8,10 @@ import httpx
 from websockets.exceptions import InvalidStatus, WebSocketException
 from websockets.sync.client import ClientConnection, connect
 
-from leetcode_local_cli.safe_files import (
-    SafeFileError,
-    atomic_write_text,
-    ensure_regular_directory,
-    validate_regular_file_target,
-)
+from leetcode_local_cli.models.session import REQUIRED_COOKIE_NAMES
 
 LC_DOMAIN = "leetcode.cn"
 
-REQUIRED_COOKIE_NAMES = ("LEETCODE_SESSION", "csrftoken")
 LEETCODE_COOKIE_URL = "https://leetcode.cn/"
 DEVTOOLS_TIMEOUT_SECONDS = 2.0
 DEVTOOLS_MAX_MESSAGES = 16
@@ -31,27 +21,6 @@ DEVTOOLS_TARGETS_REQUEST_ID = 102
 DEVTOOLS_ATTACH_REQUEST_ID = 103
 DEVTOOLS_COOKIE_REQUEST_ID = 104
 DEVTOOLS_COOKIE_POLL_INTERVAL_SECONDS = 0.5
-
-
-class SessionFileStatus(str, Enum):
-    VALID = "valid"
-    MISSING = "missing"
-    INVALID_JSON = "invalid_json"
-    INVALID_STRUCTURE = "invalid_structure"
-    MISSING_COOKIES = "missing_cookies"
-    READ_ERROR = "read_error"
-
-
-@dataclass(frozen=True)
-class SessionFileInspection:
-    status: SessionFileStatus
-    missing_cookie_names: tuple[str, ...] = ()
-    username: str | None = None
-    source: str | None = None
-
-
-class SessionFileError(OSError):
-    pass
 
 
 class DevToolsError(ConnectionError):
@@ -443,104 +412,3 @@ def parse_cookie_header(cookies: str) -> dict[str, str] | None:
         }
 
     return None
-
-
-def get_cookies_from_input() -> dict[str, str] | None:
-    return parse_cookie_header(getpass("请粘贴 Cookie（输入内容不会回显）：\n"))
-
-
-def save_session(session_data: dict, path: Path) -> None:
-    try:
-        content = json.dumps(session_data, indent=4, ensure_ascii=False)
-        ensure_regular_directory(
-            path.parent,
-            label="Session 目录",
-            mode=0o700,
-        )
-        if os.name != "nt":
-            os.chmod(path.parent, 0o700)
-        atomic_write_text(
-            path,
-            content,
-            label="Session 文件",
-            mode=0o600,
-        )
-    except (OSError, TypeError, ValueError) as exc:
-        raise SessionFileError("无法保存 Session 文件") from exc
-
-
-def load_session(path: Path) -> dict | None:
-    try:
-        if validate_regular_file_target(path, label="Session 文件") is None:
-            return None
-        with path.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
-    except json.JSONDecodeError:
-        return None
-    except (OSError, SafeFileError) as exc:
-        raise SessionFileError("无法读取 Session 文件") from exc
-
-
-def inspect_session_file(path: Path) -> SessionFileInspection:
-    try:
-        if validate_regular_file_target(path, label="Session 文件") is None:
-            return SessionFileInspection(status=SessionFileStatus.MISSING)
-        content = path.read_text(encoding="utf-8")
-
-    except FileNotFoundError:
-        return SessionFileInspection(
-            status=SessionFileStatus.MISSING,
-        )
-
-    except (OSError, SafeFileError):
-        return SessionFileInspection(
-            status=SessionFileStatus.READ_ERROR,
-        )
-
-    try:
-        data = json.loads(content)
-
-    except json.JSONDecodeError:
-        return SessionFileInspection(
-            status=SessionFileStatus.INVALID_JSON,
-        )
-
-    if not isinstance(data, dict):
-        return SessionFileInspection(
-            status=SessionFileStatus.INVALID_STRUCTURE,
-        )
-
-    cookies = data.get("cookies")
-
-    if not isinstance(cookies, dict):
-        return SessionFileInspection(
-            status=SessionFileStatus.INVALID_STRUCTURE,
-        )
-
-    missing_cookie_names: list[str] = []
-
-    for cookie_name in REQUIRED_COOKIE_NAMES:
-        cookie_value = cookies.get(cookie_name)
-
-        if not isinstance(cookie_value, str) or cookie_value == "":
-            missing_cookie_names.append(cookie_name)
-
-    if missing_cookie_names:
-        return SessionFileInspection(
-            status=SessionFileStatus.MISSING_COOKIES,
-            missing_cookie_names=tuple(missing_cookie_names),
-        )
-
-    username, source = data.get("username"), data.get("source")
-
-    if not isinstance(username, str):
-        username = None
-
-    if not isinstance(source, str):
-        source = None
-
-    return SessionFileInspection(
-        status=SessionFileStatus.VALID, username=username, source=source
-    )

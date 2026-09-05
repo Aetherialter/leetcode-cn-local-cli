@@ -1,16 +1,22 @@
-from dataclasses import dataclass
-from enum import Enum
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
-from leetcode_local_cli.auth import SessionFileStatus, inspect_session_file
-from leetcode_local_cli.client import ClientErrorKind, ClientResult
-from leetcode_local_cli.workspace import (
-    SolutionFileStatus,
-    inspect_solution_file,
-    run_solution_file,
+from leetcode_local_cli.execution.worker import run_solution_file
+from leetcode_local_cli.models.account import UserStatus
+from leetcode_local_cli.models.diagnostics import DoctorCheck, DoctorStatus
+from leetcode_local_cli.models.result import (
+    ClientErrorKind,
+    ClientFailure,
+    ClientResult,
 )
-
+from leetcode_local_cli.models.session import (
+    Session,
+    SessionErrorKind,
+    SessionFileError,
+)
+from leetcode_local_cli.models.solution import SolutionFileStatus
+from leetcode_local_cli.storage.solution import inspect_solution_file
+from leetcode_local_cli.use_cases.common import session_error
 
 SESSION_CHECK_NAME = "session"
 CONNECTIVITY_CHECK_NAME = "connectivity"
@@ -20,87 +26,25 @@ SOLUTION_CHECK_NAME = "solution"
 SOLUTION_RUN_TIMEOUT_SECONDS = 10
 
 
-class DoctorStatus(str, Enum):
-    PASS = "pass"
-    WARNING = "warning"
-    FAIL = "fail"
-
-
-@dataclass(frozen=True)
-class DoctorCheck:
-    name: str
-    status: DoctorStatus
-    message: str
-    suggestion: str | None = None
-
-
-@dataclass(frozen=True)
-class DoctorReport:
-    checks: tuple[DoctorCheck, ...]
-
-    @property
-    def ok(self) -> bool:
-        """Return whether the report contains no failed checks."""
-        return not any(check.status == DoctorStatus.FAIL for check in self.checks)
-
-
-def diagnose_session(path: Path) -> DoctorCheck:
-    """Translate the local session inspection into a user-facing check.
-
-    The returned check may contain safe metadata and missing cookie names, but
-    it must never include cookie values.
-    """
-    inspection = inspect_session_file(path)
-    match inspection.status:
-        case SessionFileStatus.VALID:
-            username = inspection.username or "未知"
-            source = inspection.source or "未知"
-            return DoctorCheck(
-                name=SESSION_CHECK_NAME,
-                status=DoctorStatus.PASS,
-                message=f"有效（用户：{username}，来源：{source}）",
-            )
-
-        case SessionFileStatus.MISSING:
-            return DoctorCheck(
-                name=SESSION_CHECK_NAME,
-                status=DoctorStatus.FAIL,
-                message="未找到 Session 文件",
-                suggestion="请执行 lc login 创建登录态",
-            )
-
-        case SessionFileStatus.READ_ERROR:
-            return DoctorCheck(
-                name=SESSION_CHECK_NAME,
-                status=DoctorStatus.FAIL,
-                message="无法读取 Session 文件",
-                suggestion="请检查文件权限，或重新执行 lc login",
-            )
-
-        case SessionFileStatus.INVALID_JSON:
-            return DoctorCheck(
-                name=SESSION_CHECK_NAME,
-                status=DoctorStatus.FAIL,
-                message="Session 文件不是有效的 JSON",
-                suggestion="请执行 lc login 重新生成登录态",
-            )
-
-        case SessionFileStatus.INVALID_STRUCTURE:
-            return DoctorCheck(
-                name=SESSION_CHECK_NAME,
-                status=DoctorStatus.FAIL,
-                message="Session 文件结构无效",
-                suggestion="请执行 lc login 重新生成登录态",
-            )
-
-        case SessionFileStatus.MISSING_COOKIES:
-            missing = "、".join(inspection.missing_cookie_names)
-            return DoctorCheck(
-                name=SESSION_CHECK_NAME,
-                status=DoctorStatus.FAIL,
-                message=f"缺少或无效的 Cookie：{missing}",
-                suggestion="请执行 lc login 刷新 Cookie",
-            )
+def diagnose_session(result: Session | SessionFileError) -> DoctorCheck:
+    if isinstance(result, Session):
+        return DoctorCheck(
+            name=SESSION_CHECK_NAME,
+            status=DoctorStatus.PASS,
+            message=f"有效（用户：{result.username or '未知'}，来源：{result.source or '未知'}）",
+        )
+    error = session_error(result)
+    suggestions = {
+        SessionErrorKind.MISSING: "请执行 lc login 创建登录态",
+        SessionErrorKind.READ_ERROR: "请检查文件权限，或重新执行 lc login",
+        SessionErrorKind.MISSING_COOKIES: "请执行 lc login 刷新 Cookie",
+    }
+    return DoctorCheck(
+        name=SESSION_CHECK_NAME,
+        status=DoctorStatus.FAIL,
+        message=error.message,
+        suggestion=suggestions.get(result.kind, error.suggestion),
+    )
 
 
 def diagnose_solution(path: Path, *, run_solution: bool = False) -> DoctorCheck:
@@ -216,10 +160,18 @@ def _diagnose_solution_runtime(path: Path) -> DoctorCheck | None:
     return None
 
 
-def diagnose_remote(result: ClientResult) -> tuple[DoctorCheck, DoctorCheck]:
+def diagnose_remote(
+    result: ClientResult[UserStatus],
+) -> tuple[DoctorCheck, DoctorCheck]:
     """Translate one user-status request into connectivity and auth checks."""
-    if not result.ok:
+    if isinstance(result, ClientFailure):
         match result.error:
+            case ClientErrorKind.TIMEOUT:
+                message = "LeetCode 请求超时"
+                suggestion = "请稍后重试"
+            case ClientErrorKind.REDIRECT | ClientErrorKind.UNSAFE_TARGET:
+                message = "已拒绝不安全的请求目标或重定向"
+                suggestion = "请检查接口地址或项目更新"
             case ClientErrorKind.NETWORK:
                 message = "无法连接 LeetCode 中文站"
                 suggestion = "请检查网络连接后重试"
@@ -266,15 +218,12 @@ def diagnose_remote(result: ClientResult) -> tuple[DoctorCheck, DoctorCheck]:
         )
 
     status = result.data
-    if not isinstance(status, dict):
-        return diagnose_remote(ClientResult(error=ClientErrorKind.INVALID_RESPONSE))
-
     connectivity = DoctorCheck(
         name=CONNECTIVITY_CHECK_NAME,
         status=DoctorStatus.PASS,
         message="LeetCode 中文站接口连接正常",
     )
-    if not status.get("isSignedIn"):
+    if not status.signed_in:
         authentication = DoctorCheck(
             name=AUTHENTICATION_CHECK_NAME,
             status=DoctorStatus.FAIL,
@@ -282,7 +231,7 @@ def diagnose_remote(result: ClientResult) -> tuple[DoctorCheck, DoctorCheck]:
             suggestion="请执行 lc login 刷新登录态",
         )
     else:
-        username = status.get("username")
+        username = status.username
         username = username if isinstance(username, str) and username else "未知用户"
         authentication = DoctorCheck(
             name=AUTHENTICATION_CHECK_NAME,

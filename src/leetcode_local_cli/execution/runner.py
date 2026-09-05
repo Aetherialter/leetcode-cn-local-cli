@@ -5,17 +5,17 @@ messages from stdin and writes one JSON event per line to stdout, keeping user
 code output away from the protocol channel.
 """
 
-from contextlib import redirect_stderr, redirect_stdout
 import inspect
 import io
 import json
 import math
-from pathlib import Path
 import sys
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from typing import Any, TextIO
 
-from leetcode_local_cli.local_testing import decode_arguments
-from leetcode_local_cli.solution_source import read_solution_source
+from leetcode_local_cli.execution.protocol import decode_arguments
+from leetcode_local_cli.storage.solution_source import read_solution_source
 
 
 def _exception_summary(exc: BaseException) -> str:
@@ -171,7 +171,7 @@ def run(path: Path) -> int:
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: python -m leetcode_local_cli._test_runner SOLUTION_FILE")
+        print("usage: python -m leetcode_local_cli.execution.runner SOLUTION_FILE")
         return 2
     return run(Path(sys.argv[1]))
 

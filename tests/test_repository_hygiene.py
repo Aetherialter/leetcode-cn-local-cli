@@ -1,10 +1,9 @@
 import json
-from pathlib import Path
 import re
 import subprocess
+from pathlib import Path
 
 import pytest
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SECRET_JSON_KEYS = {
@@ -65,6 +64,7 @@ def _find_secret_keys(value: object) -> set[str]:
         ".cursor/settings.json",
         ".codex/session.json",
         ".leetcode_local_cli/workspace.toml",
+        "solution.py",
         ".env.local",
         "credentials.json",
         "private/credentials.dev.json",

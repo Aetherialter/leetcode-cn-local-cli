@@ -3,16 +3,28 @@ import subprocess
 
 import pytest
 
-from leetcode_local_cli.client import ClientErrorKind, ClientResult
-from leetcode_local_cli.doctor import (
+from leetcode_local_cli.models.account import UserStatus
+from leetcode_local_cli.models.diagnostics import (
     DoctorCheck,
     DoctorReport,
     DoctorStatus,
+)
+from leetcode_local_cli.models.result import (
+    ClientErrorKind,
+    ClientFailure,
+    ClientSuccess,
+)
+from leetcode_local_cli.models.session import SessionFileError
+from leetcode_local_cli.models.solution import ProblemMetadata
+from leetcode_local_cli.storage.session import load_session
+from leetcode_local_cli.storage.solution import build_solution_content
+from leetcode_local_cli.use_cases.doctor_checks import (
     diagnose_remote,
-    diagnose_session,
     diagnose_solution,
 )
-from leetcode_local_cli.workspace import ProblemMetadata, build_solution_content
+from leetcode_local_cli.use_cases.doctor_checks import (
+    diagnose_session as describe_session,
+)
 
 
 @pytest.mark.parametrize(
@@ -168,7 +180,9 @@ def test_diagnose_solution_reports_runtime_timeout(tmp_path, monkeypatch) -> Non
     def raise_timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired("python", 10)
 
-    monkeypatch.setattr("leetcode_local_cli.doctor.run_solution_file", raise_timeout)
+    monkeypatch.setattr(
+        "leetcode_local_cli.use_cases.doctor_checks.run_solution_file", raise_timeout
+    )
 
     result = diagnose_solution(solution_file, run_solution=True)
 
@@ -215,7 +229,7 @@ def test_diagnose_solution_rejects_invalid_encoding_without_running(
     solution_file = tmp_path / "solution.py"
     solution_file.write_bytes(b"\xff\xfeinvalid source")
     monkeypatch.setattr(
-        "leetcode_local_cli.doctor.run_solution_file",
+        "leetcode_local_cli.use_cases.doctor_checks.run_solution_file",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("invalid source must not run")
         ),
@@ -242,7 +256,7 @@ def test_diagnose_remote_reports_connectivity_failures(
     error_kind,
     expected_text,
 ) -> None:
-    connectivity, authentication = diagnose_remote(ClientResult(error=error_kind))
+    connectivity, authentication = diagnose_remote(ClientFailure(error=error_kind))
 
     assert connectivity.status is DoctorStatus.FAIL
     assert expected_text in connectivity.message
@@ -251,7 +265,7 @@ def test_diagnose_remote_reports_connectivity_failures(
 
 def test_diagnose_remote_reports_expired_cookie() -> None:
     connectivity, authentication = diagnose_remote(
-        ClientResult(data={"isSignedIn": False})
+        ClientSuccess(data=UserStatus(False))
     )
 
     assert connectivity.status is DoctorStatus.PASS
@@ -261,7 +275,7 @@ def test_diagnose_remote_reports_expired_cookie() -> None:
 
 def test_diagnose_remote_reports_authenticated_user() -> None:
     connectivity, authentication = diagnose_remote(
-        ClientResult(data={"isSignedIn": True, "username": "learner"})
+        ClientSuccess(data=UserStatus(True, "learner"))
     )
 
     assert connectivity.status is DoctorStatus.PASS
@@ -287,7 +301,7 @@ def test_diagnose_solution_does_not_run_solution_by_default(
         raise AssertionError("run_solution_file must not be called")
 
     monkeypatch.setattr(
-        "leetcode_local_cli.doctor.run_solution_file",
+        "leetcode_local_cli.use_cases.doctor_checks.run_solution_file",
         fail_if_called,
     )
 
@@ -296,3 +310,11 @@ def test_diagnose_solution_does_not_run_solution_by_default(
     assert result.status is DoctorStatus.PASS
     assert "语法和提交信息正常" in result.message
     assert "本地运行正常" not in result.message
+
+
+def diagnose_session(path):
+    try:
+        value = load_session(path)
+    except SessionFileError as exc:
+        value = exc
+    return describe_session(value)

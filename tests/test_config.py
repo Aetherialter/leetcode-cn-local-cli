@@ -2,18 +2,19 @@ from pathlib import Path
 
 import pytest
 
-from leetcode_local_cli import config
-from leetcode_local_cli.config import (
+from leetcode_local_cli.storage import config as config
+from leetcode_local_cli.storage.config import (
     CONFIG_VERSION,
     ConfigError,
     UserConfig,
     WorkspaceConfig,
     load_user_config,
     load_workspace_config,
-    initialize_workspace,
     resolve_app_paths,
 )
-from leetcode_local_cli.safe_files import SafeFileError
+from leetcode_local_cli.storage.safe_files import SafeFileError
+from leetcode_local_cli.use_cases import setup
+from leetcode_local_cli.use_cases.setup import initialize_workspace
 
 
 def _write_user_config(path: Path, workspace_root: Path) -> None:
@@ -318,7 +319,7 @@ def test_initialize_workspace_rolls_back_created_workspace_files_on_failure(
     def fail_atomic_write(*args, **kwargs) -> None:
         raise SafeFileError("simulated config failure")
 
-    monkeypatch.setattr(config, "atomic_write_text", fail_atomic_write)
+    monkeypatch.setattr(setup, "atomic_write_text", fail_atomic_write)
 
     with pytest.raises(ConfigError, match="simulated config failure"):
         initialize_workspace(

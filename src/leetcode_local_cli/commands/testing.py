@@ -6,11 +6,7 @@ from typing import Annotated
 from typer import BadParameter, Exit, Option, echo
 
 from leetcode_local_cli.commands import common
-from leetcode_local_cli.local_testing import (
-    LocalTestInputError,
-    parse_parameter_assignments,
-)
-from leetcode_local_cli.ui import (
+from leetcode_local_cli.commands.rendering import (
     error,
     info,
     loading,
@@ -20,14 +16,18 @@ from leetcode_local_cli.ui import (
     success,
     warning,
 )
-from leetcode_local_cli.use_cases.common import UseCaseError
-from leetcode_local_cli.use_cases.diagnostics import get_doctor_report
-from leetcode_local_cli.use_cases.local_test import start_local_test
-from leetcode_local_cli.workspace import (
+from leetcode_local_cli.execution.protocol import (
+    LocalTestInputError,
+    parse_parameter_assignments,
+)
+from leetcode_local_cli.execution.worker import LocalExecutionWorker
+from leetcode_local_cli.models.execution import (
     LocalExecutionResult,
     LocalExecutionStatus,
-    LocalExecutionWorker,
 )
+from leetcode_local_cli.use_cases.diagnostics import get_doctor_report
+from leetcode_local_cli.use_cases.errors import UseCaseError
+from leetcode_local_cli.use_cases.local_test import start_local_test
 
 
 def test(
@@ -53,7 +53,9 @@ def test(
         )
     except UseCaseError as exc:
         if stdin:
-            _write_stdin_test_event({"kind": "startup_error", "error": exc.message})
+            _write_stdin_test_event(
+                {"kind": "startup_error", "code": exc.code.value, "error": exc.message}
+            )
             raise Exit(1) from exc
         common.exit_for_use_case_error(exc)
 

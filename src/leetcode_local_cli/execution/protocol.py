@@ -1,8 +1,8 @@
 """Safe parsing primitives for ``lc test`` parameter input."""
 
 import ast
-from collections.abc import Mapping
 import math
+from collections.abc import Mapping
 from typing import Any
 
 

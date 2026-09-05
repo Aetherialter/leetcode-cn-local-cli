@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from leetcode_local_cli.client import ClientErrorKind
-
+from leetcode_local_cli.models.result import ClientErrorKind
 
 PENDING_SUBMISSION_STATES = frozenset({"PENDING", "STARTED"})
 

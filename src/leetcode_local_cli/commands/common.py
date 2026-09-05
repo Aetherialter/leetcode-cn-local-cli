@@ -2,14 +2,14 @@ from typing import NoReturn
 
 from typer import Exit
 
-from leetcode_local_cli.config import (
+from leetcode_local_cli.commands.rendering import error, warning
+from leetcode_local_cli.storage.config import (
     ConfigError,
     resolve_app_paths,
     resolve_workspace_paths,
 )
-from leetcode_local_cli.paths import AppPaths, UserPaths, WorkspacePaths
-from leetcode_local_cli.ui import error, warning
-from leetcode_local_cli.use_cases.common import UseCaseError
+from leetcode_local_cli.storage.paths import AppPaths, UserPaths, WorkspacePaths
+from leetcode_local_cli.use_cases.errors import ErrorCode, UseCaseError
 
 
 def get_user_paths() -> UserPaths:
@@ -20,16 +20,14 @@ def require_app_paths() -> AppPaths:
     try:
         return resolve_app_paths()
     except ConfigError as exc:
-        error(str(exc))
-        raise Exit(1) from exc
+        raise UseCaseError(str(exc), code=ErrorCode.WORKSPACE_CONFIG) from exc
 
 
 def require_workspace_paths() -> WorkspacePaths:
     try:
         return resolve_workspace_paths()
     except ConfigError as exc:
-        error(str(exc))
-        raise Exit(1) from exc
+        raise UseCaseError(str(exc), code=ErrorCode.WORKSPACE_CONFIG) from exc
 
 
 def exit_for_use_case_error(exc: UseCaseError) -> NoReturn:

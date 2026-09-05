@@ -1,9 +1,8 @@
+import os
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-import os
 from pathlib import Path
-import sys
-
 
 APP_DIRECTORY_NAME = "leetcode-local-cli"
 USER_CONFIG_FILENAME = "config.toml"

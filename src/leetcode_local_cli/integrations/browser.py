@@ -1,24 +1,23 @@
-from collections.abc import Mapping
-from dataclasses import dataclass
-from enum import Enum
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
 from urllib.parse import urlsplit
 
-from leetcode_local_cli.auth import get_devtools_browser_info
-from leetcode_local_cli.paths import (
+from leetcode_local_cli.integrations.devtools import get_devtools_browser_info
+from leetcode_local_cli.storage.paths import (
     get_chrome_devtools_active_port_file,
     get_edge_devtools_active_port_file,
 )
-from leetcode_local_cli.safe_files import (
+from leetcode_local_cli.storage.safe_files import (
     SafeFileError,
     validate_directory_target,
     validate_regular_file_target,
 )
-
 
 LEETCODE_URL = "https://leetcode.cn/"
 BROWSER_LOGIN_TIMEOUT_SECONDS = 180.0

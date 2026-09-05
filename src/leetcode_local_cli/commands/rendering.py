@@ -1,18 +1,20 @@
-from collections.abc import Iterator
+import re
+import shutil
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from html import unescape
 from html.parser import HTMLParser
-import re
-import shutil
-from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from leetcode_local_cli.doctor import DoctorReport, DoctorStatus
-from leetcode_local_cli.submission import (
+from leetcode_local_cli.models.account import AccountProfile
+from leetcode_local_cli.models.diagnostics import DoctorReport, DoctorStatus
+from leetcode_local_cli.models.problem import ProblemDetail, ProblemSummary
+from leetcode_local_cli.models.solution import ProblemMetadata
+from leetcode_local_cli.models.submission import (
     SubmissionOutcome,
     SubmissionPending,
     SubmissionPollingFailed,
@@ -151,38 +153,36 @@ def render_local_execution_error(
         )
 
 
-def render_profile(profile: dict[str, Any]) -> None:
-    solved = profile["solved"]
-    total = profile["total"]
+def render_profile(profile: AccountProfile) -> None:
+    solved = profile.stats.solved
+    total = profile.stats.total
 
     table = Table(title="LeetCode CN Profile")
     table.add_column("Item", style="cyan", no_wrap=True)
     table.add_column("Value", style="white")
 
-    table.add_row("Username", _external_text(profile.get("username") or "-"))
-    table.add_row("Real Name", _external_text(profile.get("real_name") or "-"))
-    table.add_row(
-        "Premium", _external_text("Yes" if profile.get("is_premium") else "No")
-    )
+    table.add_row("Username", _external_text(profile.user.username or "-"))
+    table.add_row("Real Name", _external_text(profile.user.real_name or "-"))
+    table.add_row("Premium", _external_text("Yes" if profile.user.premium else "No"))
     table.add_row(
         "Solved",
         _external_text(
-            f"All {solved['All']} | Easy {solved['Easy']} | "
-            f"Medium {solved['Medium']} | Hard {solved['Hard']}"
+            f"All {solved.total} | Easy {solved.easy} | "
+            f"Medium {solved.medium} | Hard {solved.hard}"
         ),
     )
     table.add_row(
         "Total",
         _external_text(
-            f"All {total['All']} | Easy {total['Easy']} | "
-            f"Medium {total['Medium']} | Hard {total['Hard']}"
+            f"All {total.total} | Easy {total.easy} | "
+            f"Medium {total.medium} | Hard {total.hard}"
         ),
     )
 
     console.print(Panel(table, border_style="green", width=_terminal_width()))
 
 
-def render_problem_list(problems: list[Any]) -> None:
+def render_problem_list(problems: Sequence[ProblemSummary]) -> None:
     if not problems:
         warning("没有可展示的题目")
         return
@@ -227,7 +227,7 @@ def render_problem_list(problems: list[Any]) -> None:
     console.print(table)
 
 
-def render_problem_detail(problem: Any) -> None:
+def render_problem_detail(problem: ProblemDetail) -> None:
     tags = ", ".join(problem.tags) if problem.tags else "-"
 
     meta = Table.grid(padding=(0, 2))
@@ -257,7 +257,7 @@ def render_problem_detail(problem: Any) -> None:
         warning("未找到 Python3 代码模板")
 
 
-def render_submission_target(metadata: Any) -> None:
+def render_submission_target(metadata: ProblemMetadata) -> None:
     console.print(
         _external_text(
             f"当前提交目标：{metadata.problem_id}. "

@@ -3,17 +3,31 @@ from typing import cast
 
 import pytest
 
-from leetcode_local_cli.client import ClientErrorKind, ClientResult, LeetCodeClient
-from leetcode_local_cli.doctor import DoctorCheck, DoctorStatus
-from leetcode_local_cli.paths import AppPaths, UserPaths, WorkspacePaths
-from leetcode_local_cli.problem import ParseQuestionIdResult
-from leetcode_local_cli.submission import (
+from leetcode_local_cli.integrations.leetcode import LeetCodeClient
+from leetcode_local_cli.models.account import UserStatus
+from leetcode_local_cli.models.diagnostics import DoctorCheck, DoctorStatus
+from leetcode_local_cli.models.problem import ParseQuestionIdResult
+from leetcode_local_cli.models.result import (
+    ClientErrorKind,
+    ClientFailure,
+    ClientResult,
+    ClientSuccess,
+)
+from leetcode_local_cli.models.session import (
+    Credentials,
+    Session,
+    SessionErrorKind,
+    SessionFileError,
+)
+from leetcode_local_cli.models.solution import ProblemMetadata
+from leetcode_local_cli.models.submission import (
     SubmissionCheck,
     SubmissionJudged,
     SubmissionPending,
     SubmissionPollingFailed,
     SubmissionTimedOut,
 )
+from leetcode_local_cli.storage.paths import AppPaths, UserPaths, WorkspacePaths
 from leetcode_local_cli.use_cases import (
     account,
     common,
@@ -22,7 +36,6 @@ from leetcode_local_cli.use_cases import (
     submission,
 )
 from leetcode_local_cli.use_cases.common import UseCaseError
-from leetcode_local_cli.workspace import ProblemMetadata
 
 
 class FakeClient:
@@ -50,7 +63,7 @@ class FakeClock:
 
 
 class PollClient:
-    def __init__(self, results: list[ClientResult]) -> None:
+    def __init__(self, results: list[ClientResult[object]]) -> None:
         self.results = results
         self.timeouts: list[float] = []
 
@@ -59,14 +72,14 @@ class PollClient:
         submission_id: int,
         *,
         timeout: float,
-    ) -> ClientResult:
+    ) -> ClientResult[object]:
         assert submission_id == 123
         self.timeouts.append(timeout)
         return self.results.pop(0)
 
 
 def _poll(
-    results: list[ClientResult],
+    results: list[ClientResult[object]],
     policy: submission.SubmissionPollingPolicy,
 ) -> tuple[object, PollClient, FakeClock]:
     client = PollClient(results)
@@ -97,13 +110,8 @@ def app_paths(tmp_path, user_paths: UserPaths) -> AppPaths:
     )
 
 
-def _session_data() -> dict:
-    return {
-        "cookies": {
-            "LEETCODE_SESSION": "session-value",
-            "csrftoken": "csrf-value",
-        }
-    }
+def _session_data() -> Session:
+    return Session(Credentials("session-value", "csrf-value"))
 
 
 def _check(name: str) -> DoctorCheck:
@@ -118,46 +126,47 @@ def test_use_cases_do_not_depend_on_cli_or_rich() -> None:
         assert "from typer" not in content
         assert "import typer" not in content
         assert "from rich" not in content
-        assert "leetcode_local_cli.ui" not in content
+        assert "leetcode_local_cli.commands.rendering" not in content
 
 
-def test_load_cookies_stops_on_failed_session_inspection(
-    monkeypatch,
-    user_paths,
-) -> None:
-    monkeypatch.setattr(
-        common,
-        "diagnose_session",
-        lambda path: DoctorCheck(
-            name="session",
-            status=DoctorStatus.FAIL,
-            message="Session 文件结构无效",
-            suggestion="请重新登录",
-        ),
-    )
-    monkeypatch.setattr(
-        common,
-        "load_session",
-        lambda path: (_ for _ in ()).throw(AssertionError("should not load")),
-    )
+def test_load_cookies_classifies_session_error(monkeypatch, user_paths) -> None:
+    calls = []
 
-    with pytest.raises(UseCaseError) as caught:
+    def failing_load(path):
+        calls.append(path)
+        raise SessionFileError(SessionErrorKind.INVALID_STRUCTURE)
+
+    monkeypatch.setattr(common, "load_session", failing_load)
+    with pytest.raises(UseCaseError, match="Session 文件结构无效"):
         common.load_cookies_from_session(user_paths)
-
-    assert caught.value.message == "Session 文件结构无效"
-    assert caught.value.suggestion == "请重新登录"
+    assert calls == [user_paths.session_file]
 
 
 def test_get_user_status_reports_client_error(monkeypatch, user_paths) -> None:
     class ErrorClient(FakeClient):
-        def user_status(self) -> ClientResult:
-            return ClientResult(error=ClientErrorKind.NETWORK)
+        def user_status(self) -> ClientResult[object]:
+            return ClientFailure(error=ClientErrorKind.NETWORK)
 
     monkeypatch.setattr(account, "load_cookies_from_session", lambda paths: {})
     monkeypatch.setattr(account, "LeetCodeClient", ErrorClient)
 
     with pytest.raises(UseCaseError, match="网络请求失败"):
         account.get_user_status(user_paths)
+
+
+def test_profile_does_not_fetch_stats_when_signed_out(monkeypatch, user_paths) -> None:
+    class SignedOutClient(FakeClient):
+        def user_status(self):
+            return ClientSuccess(UserStatus(False))
+
+        def problem_stats(self):
+            pytest.fail("signed-out profile must not fetch statistics")
+
+    monkeypatch.setattr(account, "load_cookies_from_session", lambda paths: {})
+    monkeypatch.setattr(account, "LeetCodeClient", SignedOutClient)
+    with pytest.raises(UseCaseError) as caught:
+        account.get_account_profile(user_paths)
+    assert caught.value.code.value == "client_error"
 
 
 @pytest.mark.parametrize(
@@ -187,8 +196,8 @@ def test_get_problem_summaries_rejects_invalid_response(
     user_paths,
 ) -> None:
     class InvalidProblemListClient(FakeClient):
-        def problem_list(self, limit: int = 50, skip: int = 0) -> ClientResult:
-            return ClientResult(data=None)
+        def problem_list(self, limit: int = 50, skip: int = 0) -> ClientResult[object]:
+            return ClientFailure(error=ClientErrorKind.INVALID_RESPONSE)
 
     monkeypatch.setattr(problems, "load_cookies_from_session", lambda paths: {})
     monkeypatch.setattr(problems, "LeetCodeClient", InvalidProblemListClient)
@@ -225,21 +234,21 @@ def test_submit_current_solution_returns_result_and_reports_target(
             title_slug: str,
             question_id: str,
             code: str,
-        ) -> ClientResult:
+        ) -> ClientResult[object]:
             assert title_slug == "two-sum"
             assert question_id == "1"
             assert code == "class Solution:\n    pass"
-            return ClientResult(data=123)
+            return ClientSuccess(data=123)
 
         def get_submission_result(
             self,
             submission_id: int,
             *,
             timeout: float,
-        ) -> ClientResult:
+        ) -> ClientResult[object]:
             assert submission_id == 123
             assert timeout == 10
-            return ClientResult(
+            return ClientSuccess(
                 data=SubmissionCheck(state="SUCCESS", status_message="Accepted")
             )
 
@@ -276,9 +285,9 @@ def test_submission_polling_reaches_terminal_result_after_pending_states() -> No
     policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
     outcome, client, clock = _poll(
         [
-            ClientResult(data=SubmissionCheck(state="PENDING")),
-            ClientResult(data=SubmissionCheck(state="STARTED")),
-            ClientResult(
+            ClientSuccess(data=SubmissionCheck(state="PENDING")),
+            ClientSuccess(data=SubmissionCheck(state="STARTED")),
+            ClientSuccess(
                 data=SubmissionCheck(
                     state="SUCCESS",
                     status_message="Accepted",
@@ -305,8 +314,8 @@ def test_submission_polling_uses_total_deadline_and_clamps_sleep() -> None:
     )
     outcome, client, clock = _poll(
         [
-            ClientResult(data=SubmissionCheck(state="PENDING")),
-            ClientResult(data=SubmissionCheck(state="PENDING")),
+            ClientSuccess(data=SubmissionCheck(state="PENDING")),
+            ClientSuccess(data=SubmissionCheck(state="PENDING")),
         ],
         policy,
     )
@@ -320,8 +329,8 @@ def test_submission_polling_recovers_from_transient_network_error() -> None:
     policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
     outcome, _, clock = _poll(
         [
-            ClientResult(error=ClientErrorKind.NETWORK),
-            ClientResult(
+            ClientFailure(error=ClientErrorKind.NETWORK),
+            ClientSuccess(
                 data=SubmissionCheck(
                     state="SUCCESS",
                     status_message="Wrong Answer",
@@ -345,11 +354,11 @@ def test_submission_polling_retries_server_error_and_resets_error_count() -> Non
     )
     outcome, _, clock = _poll(
         [
-            ClientResult(error=ClientErrorKind.HTTP, status_code=503),
-            ClientResult(data=SubmissionCheck(state="PENDING")),
-            ClientResult(error=ClientErrorKind.TIMEOUT),
-            ClientResult(error=ClientErrorKind.TIMEOUT),
-            ClientResult(
+            ClientFailure(error=ClientErrorKind.HTTP, status_code=503),
+            ClientSuccess(data=SubmissionCheck(state="PENDING")),
+            ClientFailure(error=ClientErrorKind.TIMEOUT),
+            ClientFailure(error=ClientErrorKind.TIMEOUT),
+            ClientSuccess(
                 data=SubmissionCheck(
                     state="SUCCESS",
                     status_message="Accepted",
@@ -370,9 +379,9 @@ def test_submission_polling_stops_after_transient_error_limit() -> None:
     )
     outcome, _, clock = _poll(
         [
-            ClientResult(error=ClientErrorKind.TIMEOUT),
-            ClientResult(error=ClientErrorKind.TIMEOUT),
-            ClientResult(error=ClientErrorKind.TIMEOUT),
+            ClientFailure(error=ClientErrorKind.TIMEOUT),
+            ClientFailure(error=ClientErrorKind.TIMEOUT),
+            ClientFailure(error=ClientErrorKind.TIMEOUT),
         ],
         policy,
     )
@@ -387,12 +396,12 @@ def test_submission_polling_honors_rate_limit_retry_after() -> None:
     policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
     outcome, _, clock = _poll(
         [
-            ClientResult(
+            ClientFailure(
                 error=ClientErrorKind.HTTP,
                 status_code=429,
                 retry_after_seconds=1.5,
             ),
-            ClientResult(
+            ClientSuccess(
                 data=SubmissionCheck(
                     state="SUCCESS",
                     status_message="Accepted",
@@ -409,7 +418,7 @@ def test_submission_polling_honors_rate_limit_retry_after() -> None:
 def test_submission_polling_does_not_retry_non_transient_http_error() -> None:
     policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
     outcome, _, clock = _poll(
-        [ClientResult(error=ClientErrorKind.HTTP, status_code=401)],
+        [ClientFailure(error=ClientErrorKind.HTTP, status_code=401)],
         policy,
     )
 
@@ -421,7 +430,7 @@ def test_submission_polling_does_not_retry_non_transient_http_error() -> None:
 def test_submission_polling_rejects_terminal_result_without_status() -> None:
     policy = submission.SubmissionPollingPolicy(wait_timeout_seconds=5)
     outcome, _, _ = _poll(
-        [ClientResult(data=SubmissionCheck(state="SUCCESS"))],
+        [ClientSuccess(data=SubmissionCheck(state="SUCCESS"))],
         policy,
     )
 
@@ -453,16 +462,16 @@ def test_submit_current_solution_never_retries_failed_post(
             title_slug: str,
             question_id: str,
             code: str,
-        ) -> ClientResult:
+        ) -> ClientResult[object]:
             attempts.append((title_slug, question_id, code))
-            return ClientResult(error=ClientErrorKind.TIMEOUT)
+            return ClientFailure(error=ClientErrorKind.TIMEOUT)
 
         def get_submission_result(
             self,
             submission_id: int,
             *,
             timeout: float,
-        ) -> ClientResult:
+        ) -> ClientResult[object]:
             raise AssertionError("failed POST must not start polling")
 
     monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
@@ -516,9 +525,9 @@ def test_check_existing_submission_queries_once(
             submission_id: int,
             *,
             timeout: float,
-        ) -> ClientResult:
+        ) -> ClientResult[object]:
             requests.append((submission_id, timeout))
-            return ClientResult(data=check)
+            return ClientSuccess(data=check)
 
     monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
     monkeypatch.setattr(submission, "LeetCodeClient", CheckClient)
@@ -539,8 +548,8 @@ def test_check_existing_submission_preserves_id_on_request_failure(
             submission_id: int,
             *,
             timeout: float,
-        ) -> ClientResult:
-            return ClientResult(error=ClientErrorKind.NETWORK)
+        ) -> ClientResult[object]:
+            return ClientFailure(error=ClientErrorKind.NETWORK)
 
     monkeypatch.setattr(submission, "load_cookies_from_session", lambda paths: {})
     monkeypatch.setattr(submission, "LeetCodeClient", FailedCheckClient)
@@ -566,8 +575,8 @@ def test_get_doctor_report_collects_local_and_remote_checks(
     app_paths,
 ) -> None:
     class DoctorClient(FakeClient):
-        def user_status(self) -> ClientResult:
-            return ClientResult(data={"isSignedIn": True, "username": "learner"})
+        def user_status(self) -> ClientResult[object]:
+            return ClientSuccess(data=UserStatus(True, "learner"))
 
     monkeypatch.setattr(diagnostics, "load_session", lambda path: _session_data())
     monkeypatch.setattr(diagnostics, "LeetCodeClient", DoctorClient)
@@ -604,10 +613,14 @@ def test_get_doctor_report_forwards_solution_execution(
     app_paths,
 ) -> None:
     class DoctorClient(FakeClient):
-        def user_status(self) -> ClientResult:
-            return ClientResult(data={"isSignedIn": False})
+        def user_status(self) -> ClientResult[object]:
+            return ClientSuccess(data=UserStatus(False))
 
-    monkeypatch.setattr(diagnostics, "load_session", lambda path: None)
+    monkeypatch.setattr(
+        diagnostics,
+        "load_session",
+        lambda path: (_ for _ in ()).throw(SessionFileError(SessionErrorKind.MISSING)),
+    )
     monkeypatch.setattr(diagnostics, "LeetCodeClient", DoctorClient)
     monkeypatch.setattr(diagnostics, "diagnose_session", lambda path: _check("session"))
     monkeypatch.setattr(
@@ -634,8 +647,8 @@ def test_get_doctor_report_warns_and_skips_solution_without_workspace(
     user_paths,
 ) -> None:
     class DoctorClient(FakeClient):
-        def user_status(self) -> ClientResult:
-            return ClientResult(data={"isSignedIn": True, "username": "learner"})
+        def user_status(self) -> ClientResult[object]:
+            return ClientSuccess(data=UserStatus(True, "learner"))
 
     monkeypatch.setattr(diagnostics, "load_session", lambda path: _session_data())
     monkeypatch.setattr(diagnostics, "LeetCodeClient", DoctorClient)
@@ -659,8 +672,8 @@ def test_get_doctor_report_requires_workspace_when_running_solution(
     user_paths,
 ) -> None:
     class DoctorClient(FakeClient):
-        def user_status(self) -> ClientResult:
-            return ClientResult(data={"isSignedIn": True, "username": "learner"})
+        def user_status(self) -> ClientResult[object]:
+            return ClientSuccess(data=UserStatus(True, "learner"))
 
     monkeypatch.setattr(diagnostics, "load_session", lambda path: _session_data())
     monkeypatch.setattr(diagnostics, "LeetCodeClient", DoctorClient)

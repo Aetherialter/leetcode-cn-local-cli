@@ -3,18 +3,27 @@ from io import StringIO
 import pytest
 from rich.console import Console
 
-from leetcode_local_cli import ui
-from leetcode_local_cli.client import ClientErrorKind
-from leetcode_local_cli.doctor import DoctorCheck, DoctorReport, DoctorStatus
-from leetcode_local_cli.problem import ProblemDetail, ProblemSummary
-from leetcode_local_cli.submission import (
+from leetcode_local_cli.commands import rendering as ui
+from leetcode_local_cli.models.account import (
+    AccountProfile,
+    DifficultyCounts,
+    ProblemStats,
+    UserStatus,
+)
+from leetcode_local_cli.models.diagnostics import (
+    DoctorCheck,
+    DoctorReport,
+    DoctorStatus,
+)
+from leetcode_local_cli.models.problem import ProblemDetail, ProblemSummary
+from leetcode_local_cli.models.result import ClientErrorKind
+from leetcode_local_cli.models.solution import ProblemMetadata
+from leetcode_local_cli.models.submission import (
     SubmissionJudged,
     SubmissionPending,
     SubmissionPollingFailed,
     SubmissionTimedOut,
 )
-from leetcode_local_cli.workspace import ProblemMetadata
-
 
 MARKUP_PAYLOAD = "[link=https://evil.example]click[/link]"
 BROKEN_MARKUP_PAYLOAD = "[/]"
@@ -161,13 +170,10 @@ def test_all_dynamic_renderers_treat_external_markup_as_plain_text(
         stderr=MARKUP_PAYLOAD,
     )
     ui.render_profile(
-        {
-            "username": MARKUP_PAYLOAD,
-            "real_name": MARKUP_PAYLOAD,
-            "is_premium": False,
-            "solved": {"All": 1, "Easy": 1, "Medium": 0, "Hard": 0},
-            "total": {"All": 3, "Easy": 1, "Medium": 1, "Hard": 1},
-        }
+        AccountProfile(
+            UserStatus(True, MARKUP_PAYLOAD, real_name=MARKUP_PAYLOAD),
+            ProblemStats(DifficultyCounts(1, 0, 0), DifficultyCounts(1, 1, 1)),
+        )
     )
     ui.render_problem_list(
         [
@@ -177,7 +183,7 @@ def test_all_dynamic_renderers_treat_external_markup_as_plain_text(
                 title_slug="example",
                 difficulty="Easy",
                 paid_only=False,
-                tags=[MARKUP_PAYLOAD],
+                tags=(MARKUP_PAYLOAD,),
             )
         ]
     )
@@ -188,7 +194,7 @@ def test_all_dynamic_renderers_treat_external_markup_as_plain_text(
             title=MARKUP_PAYLOAD,
             title_slug=MARKUP_PAYLOAD,
             difficulty="Easy",
-            tags=[MARKUP_PAYLOAD],
+            tags=(MARKUP_PAYLOAD,),
             content_html=f"<p>{MARKUP_PAYLOAD}</p>",
             python_code="class Solution: pass",
         )
