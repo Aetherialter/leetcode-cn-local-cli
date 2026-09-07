@@ -4,13 +4,16 @@ import pytest
 
 from leetcode_local_cli.storage import config as config
 from leetcode_local_cli.storage.config import (
-    CONFIG_VERSION,
+    USER_CONFIG_VERSION,
+    WORKSPACE_CONFIG_VERSION,
     ConfigError,
+    ConfigErrorKind,
     UserConfig,
     WorkspaceConfig,
     load_user_config,
     load_workspace_config,
     resolve_app_paths,
+    serialize_user_config,
 )
 from leetcode_local_cli.storage.safe_files import SafeFileError
 from leetcode_local_cli.use_cases import setup
@@ -22,7 +25,7 @@ def _write_user_config(path: Path, workspace_root: Path) -> None:
     path.write_text(
         "\n".join(
             (
-                f"version = {CONFIG_VERSION}",
+                f"version = {USER_CONFIG_VERSION}",
                 f'default_workspace = "{workspace_root.as_posix()}"',
                 'default_site = "cn"',
                 "",
@@ -37,7 +40,7 @@ def _write_workspace_config(path: Path) -> None:
     path.write_text(
         "\n".join(
             (
-                f"version = {CONFIG_VERSION}",
+                f"version = {WORKSPACE_CONFIG_VERSION}",
                 'site = "cn"',
                 'language = "python3"',
                 "",
@@ -59,7 +62,7 @@ def test_load_user_config_returns_typed_model(tmp_path: Path) -> None:
     result = load_user_config(config_file)
 
     assert result == UserConfig(
-        version=CONFIG_VERSION,
+        version=USER_CONFIG_VERSION,
         default_workspace=workspace_root,
         default_site="cn",
     )
@@ -99,10 +102,47 @@ def test_load_workspace_config_returns_typed_model(tmp_path: Path) -> None:
     result = load_workspace_config(config_file)
 
     assert result == WorkspaceConfig(
-        version=CONFIG_VERSION,
+        version=WORKSPACE_CONFIG_VERSION,
         site="cn",
         language="python3",
     )
+
+
+def test_user_schema_upgrade_does_not_make_marker_v2_supported(tmp_path: Path) -> None:
+    marker = tmp_path / "workspace.toml"
+    marker.write_text('version = 2\nsite = "cn"\nlanguage = "python3"\n')
+    with pytest.raises(ConfigError) as caught:
+        load_workspace_config(marker)
+    assert caught.value.kind is ConfigErrorKind.UNSUPPORTED
+
+
+def test_user_config_serializer_refuses_old_write_version() -> None:
+    with pytest.raises(ConfigError) as caught:
+        serialize_user_config(UserConfig(1, None, "cn"))
+    assert caught.value.kind is ConfigErrorKind.UNSUPPORTED
+
+
+def test_user_config_serializer_validates_schema() -> None:
+    with pytest.raises(ConfigError, match="绝对路径"):
+        serialize_user_config(UserConfig(USER_CONFIG_VERSION, Path("relative"), "cn"))
+
+
+def test_init_invalid_serialization_preserves_existing_files(
+    tmp_path, monkeypatch
+) -> None:
+    config_file = tmp_path / "config.toml"
+    paths = initialize_workspace(
+        tmp_path / "workspace", user_config_file=config_file
+    ).paths
+    paths.solution_file.write_bytes(b"user code")
+    originals = {
+        path: path.read_bytes()
+        for path in (config_file, paths.workspace_config_file, paths.solution_file)
+    }
+    monkeypatch.setattr(config, "_toml_string", lambda value: '"\x7f"')
+    with pytest.raises(ConfigError, match="有效的 UTF-8 TOML"):
+        initialize_workspace(paths.workspace_root, user_config_file=config_file)
+    assert {path: path.read_bytes() for path in originals} == originals
 
 
 @pytest.mark.parametrize(
@@ -202,12 +242,12 @@ def test_initialize_workspace_creates_versioned_files_and_user_config(
     assert result.solution_created
     assert not (result.paths.metadata_directory / "session.json").exists()
     assert load_workspace_config(result.paths.workspace_config_file) == WorkspaceConfig(
-        version=CONFIG_VERSION,
+        version=WORKSPACE_CONFIG_VERSION,
         site="cn",
         language="python3",
     )
     assert load_user_config(user_config_file) == UserConfig(
-        version=CONFIG_VERSION,
+        version=USER_CONFIG_VERSION,
         default_workspace=workspace_root,
         default_site="cn",
     )

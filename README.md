@@ -2,7 +2,7 @@
 
 面向 LeetCode 中文站的轻量本地刷题 CLI：配置一个工作区，通过 Chrome、Edge 或手动 Cookie 登录，在线获取题目，在 `solution.py` 中解题并进行本地调用、诊断和远程提交。
 
-本文对应版本：`v0.11.0`。发布记录见 [GitHub Releases](https://github.com/Aetherialter/leetcode-local-cli/releases)。
+最近发布版本：`v0.11.0`。本文也记录当前源码中尚未发布的编辑器配置、节点转换和详细错误功能；这些新增命令需在源码目录使用 `uv run lc ...`。发布记录见 [GitHub Releases](https://github.com/Aetherialter/leetcode-local-cli/releases)。
 
 开发本地源码使用 `uv sync --locked --all-groups`，随后用 `uv run lc ...`；未激活虚拟环境或安装全局工具时，裸 `lc` 不一定可用。
 
@@ -52,6 +52,7 @@ lc status
 lc profile
 lc show
 lc get 1
+lc config editor zed
 lc init
 lc doctor
 lc solve 1
@@ -74,17 +75,19 @@ lc check <Submission ID>
 | `lc login --browser chrome\|edge` | 只使用指定浏览器，失败后进入手动登录 |
 | `lc status` / `lc profile` | 检查登录态或展示账号信息 |
 | `lc show` / `lc get <题号>` | 查看题目列表或详情 |
-| `lc solve <题号>` | 生成并打开 `solution.py` |
+| `lc config editor [程序] [--arg=参数]` | 查看或设置用户编辑器；`--arg` 可重复，`--clear` 移除设置 |
+| `lc solve <题号> [--editor 程序]` | 生成 `solution.py`，使用已配置或临时指定的编辑器 |
 | `lc solve <题号> --no-open` | 只保存解法，不请求打开编辑器 |
 | `lc test [--timeout 秒数]` | 交互调用 `Solution` 的首个公开方法 |
 | `lc test --stdin` | JSON Lines 模式，适合 AI 或 CI |
+| `lc test --verbose` | 显示完整异常调用栈；也可配合 `--stdin` |
 | `lc doctor [--run-solution]` | 检查工作区、Session 和网络；可选择执行解法 |
 | `lc submit [--wait-timeout 秒数]` | 提交 marker 区域并限时等待判题；仅 Accepted 返回 0 |
 | `lc check <Submission ID>` | 查询一次已有提交的当前状态，不会重新提交代码 |
 
-`login`、`status`、`profile`、`show`、`get`、`check` 和不带 `--run-solution` 的 `doctor` 不要求先初始化工作区。账号和题目命令需要有效 Session；`doctor` 在 Session 缺失时仍会诊断并返回失败。`solve`、`test`、`submit` 和 `doctor --run-solution` 需要已配置的工作区。
+`config editor`、`login`、`status`、`profile`、`show`、`get`、`check` 和不带 `--run-solution` 的 `doctor` 不要求先初始化工作区。账号和题目命令需要有效 Session；`doctor` 在 Session 缺失时仍会诊断并返回失败。`solve`、`test`、`submit` 和 `doctor --run-solution` 需要已配置的工作区。
 
-解法保存成功但系统无法打开文件时，`solve` 显示保存路径和警告，仍返回 0；写入失败则返回 1，并且不打开文件。
+解法保存成功但未配置编辑器或启动失败时，`solve` 显示保存路径和警告，仍返回 0；写入失败则返回 1，并且不打开文件。
 
 用户配置或 marker 损坏时，普通 `init` 不覆盖它们。明确修复目标后执行：
 
@@ -93,6 +96,27 @@ uv run lc init D:/Projects/leetcode-local-cli --repair --yes
 ```
 
 修复前会在损坏文件旁创建 `原文件名.<随机标识>.bak`，保留原始字节。后续失败会尝试回滚本次文件变化，已创建的备份保留供恢复；版本、站点或语言不受支持，以及链接或权限问题，不会被 `--repair` 强行覆盖。
+
+## 编辑器配置
+
+编辑器属于当前用户的个人设置，存入用户配置目录的 `config.toml`，不存入工作区 marker 或 Session。尚未初始化时也可设置；之后初始化或切换默认工作区会保留它。
+
+用户配置格式现为 v2，工作区 marker 仍为 v1，Session 格式不变。已有 v1 用户配置（含内测编辑器设置）可继续读取，读取不改写文件；显式设置/清除编辑器或执行 `init` 时才保存为 v2。也可用 `uv run lc config editor zed` 保存并升级。升级后旧版 `lc` 会拒绝该配置，不能用旧版 `init --repair` 降级；开发期间请统一使用 `uv run lc`。
+
+```shell
+lc config editor zed
+lc config editor code --arg=--reuse-window
+lc config editor
+lc solve 1 --editor zed
+lc solve 1 --no-open
+lc config editor --clear
+```
+
+`zed`、`code` 和别名 `vscode` 从 PATH 查找，也可指定可执行文件绝对路径。可重复的 `--arg` 按参数数组原样传递，路径最后追加；不支持 Shell 命令串或文件占位符。配置不自动安装编辑器。
+
+优先级为：`--no-open` 禁止打开；否则 `--editor` 覆盖用户配置，且不继承旧编辑器的参数；没有临时参数时使用用户设置。不增加工作区或环境变量覆盖层。
+
+未配置时只保存并提示，不使用系统 `.py` 文件关联，避免关联到 Python/uv 后意外执行代码。显式配置失败也不静默回退。Windows 的 VS Code 标准 `code.cmd` 入口会解析为安装目录的 `Code.exe`，其他 `.cmd`/`.bat` 编辑器入口拒绝执行。启动后短时间内非零退出会警告；GUI 持续运行视为请求已发出，不强行终止，也不保证窗口一定可见。
 
 ## 浏览器登录
 
@@ -115,7 +139,20 @@ CLI 不读取或解密浏览器 Cookie 数据库，不创建专用 profile，也
 参数 > nums = [3, 2, 4], target = 6
 ```
 
-连续两次回车退出。每组默认限时 1 秒；无输入、参数错误、异常或超时返回退出码 1。退出码 0 只表示调用正常完成，不代表算法正确。链表和二叉树暂不自动转换。
+连续两次回车退出。每组默认限时 1 秒；无输入、参数错误、异常或超时返回退出码 1。退出码 0 只表示调用正常完成，不代表算法正确。
+
+支持按入口类型注解转换节点：`ListNode`、`TreeNode`、`Optional[...]`、`... | None`，以及相应的字符串注解。普通 `list` 保持列表含义，不根据参数名猜类型；节点参数缺少注解时请补齐。嵌套节点集合及混合节点类型注解会明确拒绝。
+
+启用 `from __future__ import annotations` 不改变这些规则，`list["ListNode"]` 同样拒绝。`Literal["ListNode"]` 中的字符串是取值，`Annotated[int, "ListNode"]` 中的字符串是元数据，均不触发节点转换；`Annotated[ListNode, ...]` 等节点包装暂不支持。
+
+```text
+l1 = [2,4,3], l2 = [5,6,4]
+root = [1,null,2,3]
+```
+
+链表用整数数组；树用力扣式层序数组，`null` 与 `None` 都表示空位（字符串 `"null"` 不受影响）。空数组或 `null`/`None` 表示空节点；树中无法连接到根的非空值会被拒绝。返回节点转换回同类数组，树尾多余空位移除；有节点返回注解时空节点输出 `[]`。普通方法返回 `None` 时，展示调用后的参数，节点参数也转回数组。
+
+生成模板提供位于提交区域外的本地节点定义，不将这些辅助定义发送给 LeetCode。第一版只支持整数节点的无环单链表和普通二叉树，不支持环、共享节点身份、随机指针、N 叉树、嵌套节点集合及设计题多方法调用。单个节点数组输入最多 100,000 项，输出最多 100,000 个节点；超过限制明确失败，不截断为成功。
 
 非交互示例：
 
@@ -124,6 +161,10 @@ printf 'nums = [3, 2, 4], target = 6\n' | lc test --stdin
 ```
 
 `--stdin` 的运行时启动失败（包括未初始化工作区）也输出 JSON Lines，包含 `kind: startup_error`、稳定的 `code` 和中文 `error`，退出码为 1。非法 CLI 参数仍使用标准用法错误，退出码为 2。
+
+异常默认显示类型、原因和可定位的 `solution.py` 行号，并保留 stdout/stderr；`--verbose` 增加完整调用栈，不采集局部变量。JSON 模式通过 `error_line` 和可选 `traceback` 字段表达，不混入 Rich 文本。调用栈仍可能包含源码片段、路径及异常内容，共享前请自行检查。
+
+某组超时后，下一组会重启 worker；若重新加载失败，该组报告失败并保留行号及可选调用栈，后续输入仍可继续尝试。
 
 `lc submit` 取得 submission ID 后默认等待判题 30 秒。判题查询只在总预算内有限重试；初始提交 POST 不自动重试，避免重复提交。等待超时或查询失败时会保留 submission ID，并返回退出码 1。
 

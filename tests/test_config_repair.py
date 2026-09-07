@@ -1,6 +1,8 @@
 import pytest
 
 from leetcode_local_cli.storage.config import (
+    USER_CONFIG_VERSION,
+    WORKSPACE_CONFIG_VERSION,
     ConfigError,
     ConfigErrorKind,
     load_user_config,
@@ -54,15 +56,19 @@ def test_repair_preserves_original_bytes_and_solution(
 
 @pytest.mark.parametrize("target", ["user", "marker"])
 @pytest.mark.parametrize("extra", ["", '\nfuture_field = "preserve"\n'])
-@pytest.mark.parametrize(
-    "old, new", [("version = 1", "version = 99"), ('"cn"', '"com"')]
-)
-def test_repair_rejects_unsupported_settings(tmp_path, target, old, new, extra) -> None:
+@pytest.mark.parametrize("field", ["version", "site"])
+def test_repair_rejects_unsupported_settings(tmp_path, target, field, extra) -> None:
     config_file = tmp_path / "config.toml"
     workspace = setup.initialize_workspace(
         tmp_path / "workspace", user_config_file=config_file
     ).paths
     path = config_file if target == "user" else workspace.workspace_config_file
+    version = USER_CONFIG_VERSION if target == "user" else WORKSPACE_CONFIG_VERSION
+    old, new = (
+        (f"version = {version}", "version = 99")
+        if field == "version"
+        else ('"cn"', '"com"')
+    )
     path.write_text(
         path.read_text(encoding="utf-8").replace(old, new) + extra, encoding="utf-8"
     )

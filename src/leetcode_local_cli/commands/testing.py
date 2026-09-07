@@ -27,7 +27,10 @@ from leetcode_local_cli.models.execution import (
 )
 from leetcode_local_cli.use_cases.diagnostics import get_doctor_report
 from leetcode_local_cli.use_cases.errors import UseCaseError
-from leetcode_local_cli.use_cases.local_test import start_local_test
+from leetcode_local_cli.use_cases.local_test import (
+    LocalTestStartupError,
+    start_local_test,
+)
 
 
 def test(
@@ -42,6 +45,9 @@ def test(
         bool,
         Option("--stdin", help="从标准输入逐行读取参数，不显示 Rich 交互界面"),
     ] = False,
+    verbose: Annotated[
+        bool, Option("--verbose", help="显示完整异常调用栈，不采集局部变量")
+    ] = False,
 ) -> None:
     if not math.isfinite(timeout) or timeout <= 0:
         raise BadParameter("必须是大于 0 的有限秒数", param_hint="--timeout")
@@ -50,12 +56,27 @@ def test(
         worker = start_local_test(
             common.require_workspace_paths().solution_file,
             timeout=timeout,
+            verbose=verbose,
         )
     except UseCaseError as exc:
         if stdin:
-            _write_stdin_test_event(
-                {"kind": "startup_error", "code": exc.code.value, "error": exc.message}
-            )
+            event: dict[str, object] = {
+                "kind": "startup_error",
+                "code": exc.code.value,
+                "error": exc.message,
+            }
+            if isinstance(exc, LocalTestStartupError):
+                event["error_line"] = exc.error_line
+                if verbose and exc.traceback:
+                    event["traceback"] = exc.traceback
+            _write_stdin_test_event(event)
+            raise Exit(1) from exc
+        if isinstance(exc, LocalTestStartupError):
+            error(exc.message)
+            if exc.error_line is not None:
+                error(f"位置：solution.py:{exc.error_line}")
+            if verbose and exc.traceback:
+                error(exc.traceback)
             raise Exit(1) from exc
         common.exit_for_use_case_error(exc)
 
@@ -132,6 +153,8 @@ def _run_interactive_local_test(
                 error_detail=error_detail or "本地代码执行失败",
                 stdout=result.stdout,
                 stderr=result.stderr,
+                error_line=result.error_line,
+                traceback=result.traceback,
             )
 
     if total == 0:
@@ -186,6 +209,8 @@ def _run_stdin_local_test(worker: LocalExecutionWorker) -> bool:
                     "error": error_detail or "本地代码执行失败",
                     "stdout": result.stdout,
                     "stderr": result.stderr,
+                    "error_line": result.error_line,
+                    **({"traceback": result.traceback} if result.traceback else {}),
                 }
             )
     if total == 0:

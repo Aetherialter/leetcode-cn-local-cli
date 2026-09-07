@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from leetcode_local_cli.models.editor import EditorConfig
 from leetcode_local_cli.storage.paths import (
     AppPaths,
     UserPaths,
@@ -17,7 +18,8 @@ from leetcode_local_cli.storage.safe_files import (
     validate_regular_file_target,
 )
 
-CONFIG_VERSION = 1
+USER_CONFIG_VERSION = 2
+WORKSPACE_CONFIG_VERSION = 1
 SUPPORTED_SITE = "cn"
 SUPPORTED_LANGUAGE = "python3"
 
@@ -43,8 +45,9 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class UserConfig:
     version: int
-    default_workspace: Path
+    default_workspace: Path | None
     default_site: str
+    editor: EditorConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -93,13 +96,15 @@ def _require_exact_keys(
     raise ConfigError(f"{label}结构无效（{'；'.join(details)}）")
 
 
-def _require_version(data: dict[str, object], *, label: str) -> int:
+def _require_version(
+    data: dict[str, object], *, label: str, supported: tuple[int, ...]
+) -> int:
     version = data.get("version")
     if type(version) is not int:
         raise ConfigError(f"{label}中的 version 必须是整数")
-    if version != CONFIG_VERSION:
+    if version not in supported:
         raise ConfigError(
-            f"{label}版本不受支持：{version}，当前支持版本为 {CONFIG_VERSION}",
+            f"{label}版本不受支持：{version}，当前支持版本为 {'、'.join(map(str, supported))}",
             kind=ConfigErrorKind.UNSUPPORTED,
         )
     return version
@@ -121,7 +126,14 @@ def load_user_config(path: Path) -> UserConfig | None:
     data = _load_toml(path, label="用户配置文件")
     if data is None:
         return None
-    version = _require_version(data, label="用户配置文件")
+    return _parse_user_config(data)
+
+
+def _parse_user_config(data: dict[str, object]) -> UserConfig:
+    # Read v1 without rewriting it; explicit settings/init writes always use v2.
+    version = _require_version(
+        data, label="用户配置文件", supported=(1, USER_CONFIG_VERSION)
+    )
     default_site = _require_string(
         data,
         "default_site",
@@ -133,25 +145,47 @@ def load_user_config(path: Path) -> UserConfig | None:
         )
     _require_exact_keys(
         data,
-        {"version", "default_workspace", "default_site"},
+        {"version", "default_site"} | (set(data) & {"default_workspace", "editor"}),
         label="用户配置文件",
     )
-    workspace_value = _require_string(data, "default_workspace", label="用户配置文件")
-    workspace_path = Path(workspace_value).expanduser()
-    if not workspace_path.is_absolute():
-        raise ConfigError("default_workspace 必须是绝对路径")
+    workspace_path = None
+    if "default_workspace" in data:
+        workspace_value = _require_string(
+            data, "default_workspace", label="用户配置文件"
+        )
+        workspace_path = Path(workspace_value).expanduser()
+        if not workspace_path.is_absolute():
+            raise ConfigError("default_workspace 必须是绝对路径")
+        workspace_path = normalize_workspace_path(workspace_path)
     return UserConfig(
         version=version,
-        default_workspace=normalize_workspace_path(workspace_path),
+        default_workspace=workspace_path,
         default_site=default_site,
+        editor=_load_editor(data["editor"]) if "editor" in data else None,
     )
+
+
+def _load_editor(value: object) -> EditorConfig:
+    if not isinstance(value, dict):
+        raise ConfigError("editor 必须是包含 command 和 args 的 TOML 表")
+    _require_exact_keys(value, {"command", "args"}, label="编辑器配置")
+    command = _require_string(value, "command", label="编辑器配置")
+    args = value["args"]
+    if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
+        raise ConfigError("editor.args 必须是字符串数组")
+    try:
+        return EditorConfig(command, tuple(args))
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
 
 
 def load_workspace_config(path: Path) -> WorkspaceConfig | None:
     data = _load_toml(path, label="工作区配置文件")
     if data is None:
         return None
-    version = _require_version(data, label="工作区配置文件")
+    version = _require_version(
+        data, label="工作区配置文件", supported=(WORKSPACE_CONFIG_VERSION,)
+    )
     site = _require_string(data, "site", label="工作区配置文件")
     language = _require_string(data, "language", label="工作区配置文件")
     if site != SUPPORTED_SITE:
@@ -170,7 +204,7 @@ def load_workspace_config(path: Path) -> WorkspaceConfig | None:
 
 def _resolve_workspace_paths(config_file: Path) -> WorkspacePaths:
     user_config = load_user_config(config_file)
-    if user_config is None:
+    if user_config is None or user_config.default_workspace is None:
         raise ConfigError(
             "尚未配置工作区，请先执行 lc init", kind=ConfigErrorKind.MISSING
         )
@@ -225,15 +259,42 @@ def resolve_app_paths(
 
 
 def _toml_string(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
+    # JSON handles C0 escapes, but TOML also forbids a literal DEL character.
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
+
+
+def _validate_serialized_toml(content: str) -> dict[str, object]:
+    try:
+        content.encode("utf-8")
+        return tomllib.loads(content)
+    except (UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise ConfigError("配置无法序列化为有效的 UTF-8 TOML") from exc
 
 
 def serialize_user_config(config: UserConfig) -> str:
-    return (
-        f"version = {config.version}\n"
-        f"default_workspace = {_toml_string(config.default_workspace.as_posix())}\n"
-        f"default_site = {_toml_string(config.default_site)}\n"
+    _require_version(
+        {"version": config.version},
+        label="待写入用户配置",
+        supported=(USER_CONFIG_VERSION,),
     )
+    lines = [f"version = {config.version}"]
+    if config.default_workspace is not None:
+        lines.append(
+            f"default_workspace = {_toml_string(config.default_workspace.as_posix())}"
+        )
+    lines.append(f"default_site = {_toml_string(config.default_site)}")
+    if config.editor is not None:
+        lines.extend(
+            (
+                "",
+                "[editor]",
+                f"command = {_toml_string(config.editor.command)}",
+                f"args = [{', '.join(_toml_string(arg) for arg in config.editor.args)}]",
+            )
+        )
+    content = "\n".join(lines) + "\n"
+    _parse_user_config(_validate_serialized_toml(content))
+    return content
 
 
 def serialize_workspace_config(config: WorkspaceConfig) -> str:

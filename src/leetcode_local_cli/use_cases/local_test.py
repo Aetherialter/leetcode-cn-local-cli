@@ -1,12 +1,24 @@
 from pathlib import Path
 
 from leetcode_local_cli.execution.worker import LocalExecutionWorker
+from leetcode_local_cli.models.execution import LocalExecutionStartupError
 from leetcode_local_cli.models.solution import SolutionFileStatus, WorkspaceError
 from leetcode_local_cli.storage.solution import inspect_solution_file
 from leetcode_local_cli.use_cases.errors import ErrorCode, UseCaseError
 
 
-def start_local_test(path: Path, *, timeout: float) -> LocalExecutionWorker:
+class LocalTestStartupError(UseCaseError):
+    def __init__(
+        self, message: str, *, error_line: int | None, traceback: str = ""
+    ) -> None:
+        super().__init__(message, code=ErrorCode.SOLUTION)
+        self.error_line = error_line
+        self.traceback = traceback
+
+
+def start_local_test(
+    path: Path, *, timeout: float, verbose: bool = False
+) -> LocalExecutionWorker:
     inspection = inspect_solution_file(path)
     match inspection.status:
         case SolutionFileStatus.MISSING:
@@ -30,13 +42,18 @@ def start_local_test(path: Path, *, timeout: float) -> LocalExecutionWorker:
                 if inspection.syntax_line
                 else "未知行"
             )
-            raise UseCaseError(
-                f"solution.py 存在 Python 语法错误（{line}）", code=ErrorCode.SOLUTION
+            raise LocalTestStartupError(
+                f"solution.py 存在 Python 语法错误（{line}）：{inspection.detail}",
+                error_line=inspection.syntax_line,
             )
 
-    worker = LocalExecutionWorker(path, timeout=timeout)
+    worker = LocalExecutionWorker(path, timeout=timeout, verbose=verbose)
     try:
         worker.start()
+    except LocalExecutionStartupError as exc:
+        raise LocalTestStartupError(
+            str(exc), error_line=exc.error_line, traceback=exc.traceback
+        ) from exc
     except WorkspaceError as exc:
         raise UseCaseError(str(exc), code=ErrorCode.SOLUTION) from exc
     return worker

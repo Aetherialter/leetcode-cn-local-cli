@@ -1,3 +1,4 @@
+from importlib.resources import files
 from pathlib import Path
 
 from leetcode_local_cli.models.solution import (
@@ -61,6 +62,7 @@ def build_solution_content(python_code: str, metadata: ProblemMetadata) -> str:
         f"{SOLUTION_FILE_HEADER}"
         f"{metadata_content}"
         f"{SOLUTION_IMPORTS}\n\n"
+        f"{files('leetcode_local_cli.models').joinpath('nodes.py').read_text(encoding='utf-8')}\n\n"
         f"{START_FLAG}\n"
         f"{_normalize_python_code(python_code)}\n"
         f"{END_FLAG}\n"

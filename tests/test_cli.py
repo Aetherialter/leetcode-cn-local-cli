@@ -799,7 +799,7 @@ def test_solve_command_reports_rejected_workspace_target(monkeypatch) -> None:
     monkeypatch.setattr(
         problem_commands,
         "write_problem_solution",
-        lambda paths, problem, *, open_editor: (_ for _ in ()).throw(
+        lambda paths, problem, *, open_editor, editor: (_ for _ in ()).throw(
             UseCaseError("solution.py 是符号链接或断链，已拒绝写入")
         ),
     )

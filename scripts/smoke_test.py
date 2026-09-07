@@ -27,6 +27,9 @@ def run_lc(
 
 
 def verify_isolated_workflow() -> None:
+    from leetcode_local_cli.models.solution import ProblemMetadata
+    from leetcode_local_cli.storage.solution import build_solution_content
+
     with TemporaryDirectory(prefix="lc-smoke-") as directory:
         root = Path(directory)
         environment = os.environ.copy()
@@ -44,9 +47,13 @@ def verify_isolated_workflow() -> None:
         missing = run_lc("test", "--stdin", environment=environment)
         assert missing.returncode == 1, missing.stderr
         assert json.loads(missing.stdout)["code"] == "workspace_config"
+        configured = run_lc("config", "editor", "zed", environment=environment)
+        assert configured.returncode == 0, configured.stderr
         workspace = root / "workspace"
         initialized = run_lc("init", str(workspace), "--yes", environment=environment)
         assert initialized.returncode == 0, initialized.stderr
+        editor = run_lc("config", "editor", environment=environment)
+        assert editor.returncode == 0 and '"zed"' in editor.stdout
         (workspace / "solution.py").write_text(
             "class Solution:\n    def answer(self, value):\n        return value + 1\n",
             encoding="utf-8",
@@ -63,6 +70,27 @@ def verify_isolated_workflow() -> None:
         events = [json.loads(line) for line in tested.stdout.splitlines()]
         assert events[0]["ok"] and events[0]["result"] == 42
         assert events[-1]["kind"] == "summary" and events[-1]["failed"] == 0
+        (workspace / "solution.py").write_text(
+            build_solution_content(
+                "class Solution:\n"
+                "    def echo(self, root: Optional[TreeNode]) -> Optional[TreeNode]:\n"
+                "        return root\n",
+                ProblemMetadata("1", "1", "Example", "example"),
+            ),
+            encoding="utf-8",
+        )
+        nodes = run_lc(
+            "test",
+            "--stdin",
+            "--timeout",
+            "10",
+            environment=environment,
+            input_text="root = [1, null, 2, 3]\nroot = []\n",
+        )
+        assert nodes.returncode == 0, (nodes.stdout, nodes.stderr)
+        node_events = [json.loads(line) for line in nodes.stdout.splitlines()]
+        assert node_events[0]["result"] == [1, None, 2, 3]
+        assert node_events[1]["result"] == []
 
 
 def main() -> None:
@@ -94,7 +122,9 @@ def main() -> None:
         )
 
     verify_isolated_workflow()
-    print(f"verified {expected_output}: entry points, isolated init, local worker")
+    print(
+        f"verified {expected_output}: entry points, editor settings, isolated init, local worker, nodes"
+    )
 
 
 if __name__ == "__main__":

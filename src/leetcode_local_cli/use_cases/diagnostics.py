@@ -91,7 +91,7 @@ def _diagnose_workspace(
             None,
         )
 
-    if user_config is None:
+    if user_config is None or user_config.default_workspace is None:
         return (
             DoctorCheck(
                 name=WORKSPACE_CHECK_NAME,

@@ -136,9 +136,15 @@ def render_local_execution_error(
     error_detail: str,
     stdout: str = "",
     stderr: str = "",
+    error_line: int | None = None,
+    traceback: str = "",
 ) -> None:
     error(f"第 {case_index} 组执行失败")
     console.print(_external_text(f"原因：{error_detail}", style="red"))
+    if error_line is not None:
+        console.print(_external_text(f"位置：solution.py:{error_line}", style="red"))
+    if traceback:
+        console.print(_external_text(traceback, style="red"))
     if stdout:
         console.print(_external_text("标准输出：", style="red"))
         console.print(

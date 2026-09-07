@@ -10,6 +10,7 @@ from leetcode_local_cli.execution.protocol import encode_arguments
 from leetcode_local_cli.models.execution import (
     LocalExecutionEntry,
     LocalExecutionResult,
+    LocalExecutionStartupError,
     LocalExecutionStatus,
 )
 from leetcode_local_cli.models.solution import WorkspaceError
@@ -32,9 +33,10 @@ def run_solution_file(
 class LocalExecutionWorker:
     """Keep one isolated Python worker alive across local input groups."""
 
-    def __init__(self, path: Path, *, timeout: float) -> None:
+    def __init__(self, path: Path, *, timeout: float, verbose: bool = False) -> None:
         self.path = Path(os.path.abspath(os.fspath(path)))
         self.timeout = timeout
+        self.verbose = verbose
         self._process: subprocess.Popen[str] | None = None
         self._events: queue.Queue[str] = queue.Queue()
         self._reader: threading.Thread | None = None
@@ -61,6 +63,7 @@ class LocalExecutionWorker:
                     "-m",
                     "leetcode_local_cli.execution.runner",
                     str(self.path),
+                    *(["--verbose"] if self.verbose else []),
                 ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -90,7 +93,11 @@ class LocalExecutionWorker:
             self.close()
             message = event.get("message")
             if isinstance(message, str) and message:
-                raise WorkspaceError(message)
+                raise LocalExecutionStartupError(
+                    message,
+                    error_line=_error_line(event),
+                    traceback=_error_traceback(event),
+                )
             raise WorkspaceError("无法加载 solution.py")
         method_name = event.get("method_name")
         method_signature = event.get("method_signature")
@@ -104,6 +111,13 @@ class LocalExecutionWorker:
         if self._process is None or self._process.poll() is not None:
             try:
                 self.start()
+            except LocalExecutionStartupError as exc:
+                return LocalExecutionResult(
+                    status=LocalExecutionStatus.FAILED,
+                    error=str(exc),
+                    error_line=exc.error_line,
+                    traceback=exc.traceback,
+                )
             except WorkspaceError as exc:
                 return LocalExecutionResult(
                     status=LocalExecutionStatus.FAILED,
@@ -203,6 +217,8 @@ class LocalExecutionWorker:
                 stdout=stdout if isinstance(stdout, str) else "",
                 stderr=stderr if isinstance(stderr, str) else "",
                 error=error if isinstance(error, str) else "本地代码执行失败",
+                error_line=_error_line(event),
+                traceback=_error_traceback(event),
             )
         result = event.get("result")
         if not isinstance(result, dict):
@@ -235,3 +251,13 @@ class LocalExecutionWorker:
             arguments_after_text=arguments_after_text,
             arguments_after_is_json=arguments_after_is_json,
         )
+
+
+def _error_line(event: dict[str, object]) -> int | None:
+    value = event.get("error_line")
+    return value if type(value) is int and value > 0 else None
+
+
+def _error_traceback(event: dict[str, object]) -> str:
+    value = event.get("traceback")
+    return value if isinstance(value, str) else ""

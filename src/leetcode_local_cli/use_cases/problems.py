@@ -3,6 +3,7 @@ from pathlib import Path
 
 from leetcode_local_cli.integrations.editor import EditorError, open_path
 from leetcode_local_cli.integrations.leetcode import LeetCodeClient
+from leetcode_local_cli.models.editor import EditorConfig
 from leetcode_local_cli.models.problem import (
     ProblemDetail,
     ProblemSummary,
@@ -108,7 +109,11 @@ class SolveResult:
 
 
 def write_problem_solution(
-    paths: WorkspacePaths, problem: ProblemDetail, *, open_editor: bool = True
+    paths: WorkspacePaths,
+    problem: ProblemDetail,
+    *,
+    open_editor: bool = True,
+    editor: EditorConfig | None = None,
 ) -> SolveResult:
     if not problem.python_code:
         raise UseCaseError(
@@ -138,7 +143,7 @@ def write_problem_solution(
         raise UseCaseError(str(exc), code=ErrorCode.SOLUTION) from exc
     if open_editor:
         try:
-            open_path(paths.solution_file)
+            open_path(paths.solution_file, editor)
         except EditorError as exc:
             return SolveResult(paths.solution_file, str(exc))
     return SolveResult(paths.solution_file)

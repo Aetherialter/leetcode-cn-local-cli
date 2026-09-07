@@ -3,9 +3,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from leetcode_local_cli.storage.config import (
-    CONFIG_VERSION,
     SUPPORTED_LANGUAGE,
     SUPPORTED_SITE,
+    USER_CONFIG_VERSION,
+    WORKSPACE_CONFIG_VERSION,
     ConfigError,
     ConfigErrorKind,
     UserConfig,
@@ -57,7 +58,8 @@ class WorkspaceInitResult:
 
 def resolve_existing_workspace(config_file: Path) -> WorkspacePaths | None:
     try:
-        if load_user_config(config_file) is None:
+        config = load_user_config(config_file)
+        if config is None or config.default_workspace is None:
             return None
         return resolve_workspace_paths(config_file)
     except ConfigError as exc:
@@ -111,6 +113,7 @@ def initialize_workspace(
     changed_files: list[tuple[Path, bytes | None]] = []
     backups: list[Path] = []
     solution_created = False
+    previous_user: UserConfig | None = None
     try:
         # Validate every original before mutating any target or creating a backup.
         damaged: list[tuple[Path, bytes]] = []
@@ -119,7 +122,9 @@ def initialize_workspace(
             (paths.workspace_config_file, load_workspace_config),
         ):
             try:
-                loader(path)
+                loaded = loader(path)
+                if isinstance(loaded, UserConfig):
+                    previous_user = loaded
             except ConfigError as exc:
                 if not repair or exc.kind is not ConfigErrorKind.INVALID:
                     raise
@@ -147,7 +152,9 @@ def initialize_workspace(
             atomic_write_text(
                 paths.workspace_config_file,
                 serialize_workspace_config(
-                    WorkspaceConfig(CONFIG_VERSION, SUPPORTED_SITE, SUPPORTED_LANGUAGE)
+                    WorkspaceConfig(
+                        WORKSPACE_CONFIG_VERSION, SUPPORTED_SITE, SUPPORTED_LANGUAGE
+                    )
                 ),
                 label="工作区配置文件",
             )
@@ -160,7 +167,12 @@ def initialize_workspace(
         atomic_write_text(
             config_file,
             serialize_user_config(
-                UserConfig(CONFIG_VERSION, paths.workspace_root, SUPPORTED_SITE)
+                UserConfig(
+                    USER_CONFIG_VERSION,
+                    paths.workspace_root,
+                    SUPPORTED_SITE,
+                    editor=previous_user.editor if previous_user else None,
+                )
             ),
             label="用户配置文件",
             mode=0o600,

@@ -10,6 +10,13 @@ class LocalTestInputError(ValueError):
     """The user-entered parameter assignments are not supported literals."""
 
 
+class _NullLiteral(ast.NodeTransformer):
+    def visit_Name(self, node: ast.Name) -> ast.expr:
+        return (
+            ast.copy_location(ast.Constant(None), node) if node.id == "null" else node
+        )
+
+
 def parse_parameter_assignments(raw: str) -> dict[str, object]:
     """Parse ``name = literal, other = literal`` without executing input.
 
@@ -41,7 +48,7 @@ def parse_parameter_assignments(raw: str) -> dict[str, object]:
         if keyword.arg in arguments:
             raise LocalTestInputError(f"参数 {keyword.arg} 重复出现")
         try:
-            value = ast.literal_eval(keyword.value)
+            value = ast.literal_eval(_NullLiteral().visit(keyword.value))
         except (ValueError, TypeError) as exc:
             raise LocalTestInputError(
                 f"参数 {keyword.arg} 必须是安全 Python 字面量"

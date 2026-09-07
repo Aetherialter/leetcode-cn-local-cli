@@ -203,6 +203,42 @@ class Solution:
     assert recovered.result_text == '"done"'
 
 
+@pytest.mark.parametrize("verbose", [False, True])
+def test_worker_timeout_then_restart_failure_retains_details(tmp_path, verbose) -> None:
+    path = tmp_path / "solution.py"
+    _write_solution(
+        path,
+        "from time import sleep\nclass Solution:\n    def run(self):\n        sleep(2)\n",
+    )
+    with LocalExecutionWorker(path, timeout=1, verbose=verbose) as worker:
+        assert worker.execute({}).status is LocalExecutionStatus.TIMED_OUT
+        _write_solution(path, "# changed during local testing\nrestart_missing\n")
+        failed = worker.execute({})
+        _write_solution(path, "class Solution:\n    def run(self):\n        return 7\n")
+        recovered = worker.execute({})
+    assert failed.status is LocalExecutionStatus.FAILED
+    assert failed.error == "NameError: name 'restart_missing' is not defined"
+    assert failed.error_line == 2
+    assert bool(failed.traceback) is verbose
+    if verbose:
+        assert "Traceback" in failed.traceback and "restart_missing" in failed.traceback
+    assert recovered.status is LocalExecutionStatus.SUCCEEDED
+    assert recovered.result_text == "7"
+
+
+def test_worker_restart_generic_error_remains_controlled(tmp_path, monkeypatch) -> None:
+    worker = LocalExecutionWorker(tmp_path / "solution.py", timeout=1)
+
+    def fail_start():
+        raise WorkspaceError("synthetic start failure")
+
+    monkeypatch.setattr(worker, "start", fail_start)
+    result = worker.execute({})
+    assert result.status is LocalExecutionStatus.FAILED
+    assert result.error == "synthetic start failure"
+    assert result.error_line is None and result.traceback == ""
+
+
 @pytest.mark.parametrize(
     "content",
     (
